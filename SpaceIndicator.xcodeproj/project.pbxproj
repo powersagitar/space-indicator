@@ -216,6 +216,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SpaceIndicator;
 				ENABLE_APP_SANDBOX = NO;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mohan Dong. Licensed under the GNU GPL v3.";
 				INFOPLIST_KEY_LSMinimumSystemVersion = "$(MACOSX_DEPLOYMENT_TARGET)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.mohandong.SpaceIndicator;
 				PRODUCT_NAME = "Space Indicator";
@@ -228,6 +229,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SpaceIndicator;
 				ENABLE_APP_SANDBOX = NO;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mohan Dong. Licensed under the GNU GPL v3.";
 				INFOPLIST_KEY_LSMinimumSystemVersion = "$(MACOSX_DEPLOYMENT_TARGET)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.mohandong.SpaceIndicator;
 				PRODUCT_NAME = "Space Indicator";
