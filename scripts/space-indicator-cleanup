@@ -1,0 +1,47 @@
+#!/bin/sh
+# Removes everything Space Indicator leaves behind. Run before `brew uninstall space-indicator`.
+set -eu
+
+ID=com.mohandong.SpaceIndicator
+APPS=${SI_APPLICATIONS_DIR:-/Applications}
+removed=0
+
+if [ "${SI_SKIP_PROCESSES:-}" != "1" ]; then
+  if pgrep -x "Space Indicator" >/dev/null 2>&1; then
+    osascript -e "quit app id \"$ID\"" >/dev/null 2>&1 || true
+    sleep 2
+    if pgrep -x "Space Indicator" >/dev/null 2>&1; then
+      pkill -x "Space Indicator" || true
+    fi
+  fi
+  launchctl bootout "gui/$(id -u)/$ID" 2>/dev/null || true
+fi
+
+remove() {
+  if [ -e "$1" ] || [ -L "$1" ]; then
+    rm -rf "$1"
+    echo "removed: $1"
+    removed=$((removed + 1))
+  fi
+}
+
+remove "$HOME/Library/LaunchAgents/$ID.plist"
+
+app="$APPS/Space Indicator.app"
+if [ -L "$app" ]; then
+  case "$(readlink "$app")" in
+    */space-indicator/"Space Indicator.app") remove "$app" ;;
+    *) echo "skipped (not a Homebrew symlink): $app" ;;
+  esac
+elif [ -e "$app" ]; then
+  echo "skipped (not a Homebrew symlink): $app"
+fi
+
+remove "$HOME/Library/Preferences/$ID.plist"
+remove "$HOME/Library/Caches/$ID"
+remove "$HOME/Library/HTTPStorages/$ID"
+remove "$HOME/Library/Saved Application State/$ID.savedState"
+
+if [ "$removed" -eq 0 ]; then
+  echo "nothing to clean up"
+fi
