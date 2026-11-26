@@ -190,10 +190,10 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 
 Behaviour to implement:
 - `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator`, call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
-- Label: `Text(model.title).monospacedDigit()`. Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
+- Label: `Image(nsImage: TitleImage.make(model.title))` with `.accessibilityLabel(model.title)` (MenuBarExtra ignores font modifiers; `TitleImage` in Core draws the tabular-digit font into a template image). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
 - Model init: `refresh()` (title = `SpaceNumbering.title(for: CGS.activeSpaceNumber())`), observers for `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) and `NSApplication.didChangeScreenParametersNotification` (both call `refresh()`), an observer for `NSMenu.didBeginTrackingNotification` that re-invalidates the Launch at Login state, then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors.
 - Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
-- Pending: whether to also observe `NSWorkspace.didActivateApplicationNotification` is decided after the owner's multi-display check (Step 4).
+- The owner's multi-display check passed with `activeSpaceDidChangeNotification` alone, so no `didActivateApplicationNotification` observer is needed for the number. The model does observe `NSWorkspace.didActivateApplicationNotification` only to restore focus to the previous app when this app is activated.
 
 - [ ] **Step 1: Implement the three files above.**
 - [ ] **Step 2: Build and run tests**

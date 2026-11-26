@@ -75,14 +75,14 @@ At launch, if another running application has bundle ID `com.mohandong.SpaceIndi
 
 Recompute at launch, on `NSWorkspace.shared.notificationCenter` `activeSpaceDidChangeNotification`, and on `NSApplication.didChangeScreenParametersNotification`.
 
-Builder must verify on a multi-display setup that moving focus between displays (clicking a window on another display) fires `activeSpaceDidChangeNotification`. If it doesn't, also recompute on `NSWorkspace.didActivateApplicationNotification`. (Builder's call based on that test.)
+Verified by the owner on a multi-display setup: moving focus between displays updates the number with `activeSpaceDidChangeNotification` alone, so no `didActivateApplicationNotification` observer is needed.
 
 ### Menu bar item
 
-- SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Text(number string)` with monospaced digits.
-- Font: system font with `.monospacedDigit()` — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
+- SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Image(nsImage:)` of the number string (see Font).
+- Font: `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)`, drawn into a template `NSImage` (`TitleImage`) because the MenuBarExtra label ignores SwiftUI font modifiers — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
 - Menu (`MenuBarExtra` content):
-  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists); the model also re-invalidates it on `NSMenu.didBeginTrackingNotification`.
+  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists); the model also re-invalidates it on `NSMenu.didBeginTrackingNotification` (confirmed by the owner). The model hands focus back to the previously frontmost app when this app gets activated (e.g. by `open`).
   - separator
   - **Quit** with key equivalent `q` (⌘Q) → `NSApp.terminate(nil)`.
 
@@ -168,5 +168,4 @@ Every push needs the owner's confirmation at that moment.
 
 - Exact source file breakdown and type names.
 - How the `.xcodeproj` is created (Xcode template, then trimmed).
-- Whether `didActivateApplicationNotification` is needed (see Update triggers).
 - Exact Homebrew macOS-version DSL.

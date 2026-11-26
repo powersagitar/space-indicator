@@ -23,7 +23,8 @@ struct SpaceIndicatorApp: App {
             Button("Quit") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
         } label: {
-            Text(model.title).monospacedDigit()
+            Image(nsImage: TitleImage.make(model.title))
+                .accessibilityLabel(model.title)
         }
         .menuBarExtraStyle(.menu)
     }
