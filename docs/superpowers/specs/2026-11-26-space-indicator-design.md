@@ -46,7 +46,7 @@ A personal macOS menu bar app that shows the 1-based number of the active Space,
 
 ### Project layout
 
-- `SpaceIndicator.xcodeproj` with one app target `SpaceIndicator` (AppKit, Swift, no storyboard/xib, no SwiftUI) and one unit test target `SpaceIndicatorTests`.
+- `SpaceIndicator.xcodeproj` with one app target `SpaceIndicator` (SwiftUI `MenuBarExtra`, Swift, no storyboard/xib) and one unit test target `SpaceIndicatorTests`.
 - `Info.plist`: `LSUIElement = YES`, `CFBundleIdentifier`, `CFBundleShortVersionString = $(MARKETING_VERSION)` (the formula passes `MARKETING_VERSION=#{version}` to `xcodebuild`, so it always matches the tag), `LSMinimumSystemVersion = 27.0`.
 - App also calls `NSApp.setActivationPolicy(.accessory)` at startup.
 - Release build: `ARCHS = arm64`, `ONLY_ACTIVE_ARCH = NO`.
@@ -63,7 +63,7 @@ Algorithm: find the display whose `"Spaces"` contains the active Space ID; the n
 
 This works the same with "Displays have separate Spaces" on (each display's array numbers from 1) or off (a single array spanning displays).
 
-With multiple displays, the status item appears in every display's menu bar with the same text; it shows the number for the Space that has focus.
+With multiple displays, the menu bar item appears in every display's menu bar with the same text; it shows the number for the Space that has focus.
 
 The parsing/numbering is a pure function over the CGS array (`[[String: Any]]` + active ID → `Int?`) so it can be unit-tested with fixture data.
 
@@ -79,10 +79,10 @@ Builder must verify on a multi-display setup that moving focus between displays 
 
 ### Menu bar item
 
-- `NSStatusItem` with `variableLength`; `button.title` = number string.
+- SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Text(number string)` with monospaced digits.
 - Font: `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)` — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
 - Menu (assigned to `statusItem.menu`):
-  - **Launch at Login** — checkmark (`state = .on`) iff the LaunchAgent plist exists; checked state refreshed each time the menu opens (`menuNeedsUpdate` / `NSMenuDelegate`).
+  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists).
   - separator
   - **Quit** with key equivalent `q` (⌘Q) → `NSApp.terminate(nil)`.
 

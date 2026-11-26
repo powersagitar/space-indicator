@@ -4,9 +4,9 @@
 
 **Goal:** A macOS menu bar app showing the active Space's 1-based number, with a Launch at Login / Quit menu, installed from source via `brew install powersagitar/tap/space-indicator`.
 
-**Architecture:** One Xcode project. Pure logic (Space numbering, LaunchAgent paths and plist IO) lives in `SpaceIndicator/Core/` and is compiled into both the app target and a host-less unit test target, so tests never launch the app. AppKit wiring (status item, notifications, private CGS calls) lives in `SpaceIndicator/App/`. A Homebrew formula in the existing tap builds the project with `xcodebuild` and installs a cleanup script.
+**Architecture:** One Xcode project. Pure logic (Space numbering, LaunchAgent paths and plist IO) lives in `SpaceIndicator/Core/` and is compiled into both the app target and a host-less unit test target, so tests never launch the app. SwiftUI wiring (`MenuBarExtra`, notifications, private CGS calls) lives in `SpaceIndicator/App/`. A Homebrew formula in the existing tap builds the project with `xcodebuild` and installs a cleanup script.
 
-**Tech Stack:** Swift 6, AppKit, Swift Testing, Xcode 27.2, Homebrew formula (Ruby), POSIX `sh`.
+**Tech Stack:** Swift 6, SwiftUI (`MenuBarExtra`), Swift Testing, Xcode 27.2, Homebrew formula (Ruby), POSIX `sh`.
 
 **Spec:** `docs/superpowers/specs/2026-11-26-space-indicator-design.md`
 
@@ -16,7 +16,7 @@
 - Bundle ID `com.mohandong.SpaceIndicator`; `PRODUCT_NAME = "Space Indicator"` → `Space Indicator.app/Contents/MacOS/Space Indicator`; target, scheme and module `SpaceIndicator`.
 - `LSUIElement = YES`; `CFBundleShortVersionString = $(MARKETING_VERSION)`; `LSMinimumSystemVersion` 27.0.
 - Ad-hoc signing: `CODE_SIGN_IDENTITY = "-"`, `CODE_SIGN_STYLE = Manual`, no `DEVELOPMENT_TEAM`. App Sandbox off. Hardened runtime off.
-- AppKit only: no storyboard, no xib, no SwiftUI.
+- SwiftUI `MenuBarExtra` UI (owner's decision, replaces AppKit-only): no storyboard, no xib, no windows.
 - LaunchAgent label and filename: `com.mohandong.SpaceIndicator` / `~/Library/LaunchAgents/com.mohandong.SpaceIndicator.plist`; `RunAtLoad` true, `KeepAlive` false, `ProcessType` `Interactive`.
 - Formula `space-indicator` (class `SpaceIndicator`), `license "GPL-3.0-only"`, no bottle, tags `vX.Y.Z`, first `v0.1.0`.
 - Every path containing `Space Indicator` is quoted in shell and Ruby.
@@ -41,7 +41,7 @@
 SpaceIndicator.xcodeproj/project.pbxproj                    # hand-written, objectVersion 77, synchronized folders
 SpaceIndicator.xcodeproj/xcshareddata/xcschemes/SpaceIndicator.xcscheme   # shared scheme: build app, test SpaceIndicatorTests
 SpaceIndicator/App/main.swift          # entry: single-instance check, NSApplication setup, run loop
-SpaceIndicator/App/AppDelegate.swift   # status item, menu, observers, launch-time self-repair
+SpaceIndicator/App/SpaceIndicatorApp.swift + SpaceIndicatorModel.swift   # MenuBarExtra, observers, launch-time self-repair
 SpaceIndicator/App/CGS.swift           # @_silgen_name private decls + live read
 SpaceIndicator/Core/SpaceNumbering.swift  # pure numbering + title
 SpaceIndicator/Core/LaunchAgent.swift     # pure path/plist + LaunchAgentStore file IO
