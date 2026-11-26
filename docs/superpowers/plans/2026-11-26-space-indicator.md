@@ -28,7 +28,7 @@
 ## Review Focus
 
 1. **Space IDs arrive as `NSNumber`, sometimes negative-typed `Int64`.** The CGS dictionaries bridge as `NSNumber`, and a reader that only accepts `UInt64` gets `?` forever. Expected: any integer `NSNumber` is read as the ID. Test `idsReadFromAnyIntegerNSNumber` in Task 2.
-2. **One display's entry is malformed while another is fine.** Expected: a display dict without a `Spaces` array is skipped and the other displays are still numbered. If a display's own `Spaces` array has an entry without a readable ID, or holds its current ID more than once, that display is `nil` (shown as `?`), since its index can't be trusted; the other displays keep their numbers. Tests `skipsMalformedOtherDisplay`, `unreadableEntryMakesThatDisplayNil` and `duplicateCurrentIDMakesThatDisplayNil` in Task 2.
+2. **One display's entry is malformed while another is fine.** Expected: a display dict with a `Display Identifier` but no `Spaces` array is `nil` (shown as `?`), a dict with neither is skipped, and the other displays are still numbered. If a display's own `Spaces` array has an entry without a readable ID, or holds its current ID more than once, that display is `nil` (shown as `?`), since its index can't be trusted; the other displays keep their numbers. Tests `identifiedDisplayWithoutSpacesIsNil`, `skipsDisplayWithNeitherIdentifierNorSpaces`, `unreadableEntryMakesThatDisplayNil` and `duplicateCurrentIDMakesThatDisplayNil` in Task 2.
 3. **The LaunchAgent plist exists but is corrupt.** Expected: the checkmark stays on because the file exists, and self-repair from a Cellar install overwrites it with a valid plist. Test `repairOverwritesCorruptPlist` in Task 3.
 4. **`~/Library/LaunchAgents` doesn't exist on a fresh account.** Expected: turning it on creates the directory. Test `installCreatesMissingDirectory` in Task 3.
 5. **A revision version (`0.1.0_1`) or an Intel-style `/usr/local` prefix.** Expected: it still rewrites to `opt`. Test `rewritesRevisionAndUsrLocal` in Task 3.
@@ -45,10 +45,12 @@ SpaceIndicator/App/SpaceIndicatorModel.swift  # title, observers, Launch at Logi
 SpaceIndicator/App/CGS.swift           # @_silgen_name private decls + live read
 SpaceIndicator/Core/SpaceNumbering.swift  # pure numbering + title
 SpaceIndicator/Core/LaunchAgent.swift     # pure path/plist + LaunchAgentStore file IO
+SpaceIndicator/Core/SingleInstance.swift  # wait briefly for a quitting instance (final fix wave)
 SpaceIndicator/Core/TitleImage.swift      # title string → tabular-digit template NSImage
 SpaceIndicatorTests/SpaceNumberingTests.swift
 SpaceIndicatorTests/LaunchAgentTests.swift
 SpaceIndicatorTests/TitleImageTests.swift
+SpaceIndicatorTests/SingleInstanceTests.swift
 scripts/space-indicator-cleanup        # POSIX sh, installed to bin/
 scripts/test-cleanup.sh                # sandboxed test of the cleanup script
 <tap>/Formula/space-indicator.rb       # tap = /opt/homebrew/Library/Taps/powersagitar/homebrew-tap (origin git@github.com:powersagitar/homebrew-tap.git)
@@ -103,9 +105,9 @@ Project decisions (the pbxproj is hand-written; no Xcode GUI, no XcodeGen):
   - Changed after Task 4 (owner request; a spike showed a status item is mirrored across displays, so one label lists every display's number). This replaced the original single-number API.
 
 Rules:
-- An ID is read from key `ManagedSpaceID` as `NSNumber` → `uint64Value`, accepting any integer NSNumber.
+- An ID is read from key `ManagedSpaceID` as `NSNumber` → `uint64Value`, accepting any integer NSNumber (not a float, and not a Bool/CFBoolean — final fix wave).
 - Current ID missing, unreadable or 0 → that display is `nil`.
-- A display dict without an `[[String: Any]]` `"Spaces"` is skipped.
+- A display dict with a `"Display Identifier"` but no `[[String: Any]]` `"Spaces"` → `nil` (changed in the final fix wave; it was skipped). A dict with neither is skipped.
 - A display whose `Spaces` has any entry with an unreadable ID, lacks the current ID, or contains it more than once → `nil`.
 - `type` is ignored, because every Space counts.
 
@@ -119,7 +121,8 @@ Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [Strin
   - `orderedByScreenOrderUnknownLast`: A [10, 11] current 11, B [20, 21] current 20, C [30, 31, 32] current 32; order `["B", "A"]` → `[1, 2, 3]`; order `["C"]` → `[3, 2, 1]`.
   - `missingOrUnknownCurrentIsNil`: spaces 10, 11 with no current → `[nil]`; current 0 → `[nil]`; current 99 → `[nil]`; `displays: []` → `[]`.
   - `idsReadFromAnyIntegerNSNumber`: ids given as `NSNumber(value: Int64(10))`, `NSNumber(value: UInt64(11))`, `NSNumber(value: Int32(12))`; current `NSNumber(value: Int32(12))` → `[3]`; current `NSNumber(value: 11.0)` → `[nil]`.
-  - `skipsMalformedOtherDisplay`: `["Display Identifier": "X"]` (no Spaces), then display [10, 11] current 11 → `[2]`.
+  - `identifiedDisplayWithoutSpacesIsNil` (was `skipsMalformedOtherDisplay`): `["Display Identifier": "X"]` (no Spaces), `["Display Identifier": "Y", "Spaces": "bad"]`, then display [10, 11] current 11 → `[nil, nil, 2]`.
+  - Final fix wave additions: `boolIDsAreUnreadable`, `floatEntryInSpacesMakesThatDisplayNil`, `skipsDisplayWithNeitherIdentifierNorSpaces`.
   - `unreadableEntryMakesThatDisplayNil`: A [10, `space("bad")`, 12] current 12, B [20, 21] current 21 → `[nil, 2]`.
   - `duplicateCurrentIDMakesThatDisplayNil`: A [10, 11, 10] current 10, B [20, 21] current 21 → `[nil, 2]`.
   - `titleFormatting`: `title(for: [2, 1]) == "2 · 1"`, `title(for: [3]) == "3"`, `title(for: [3, nil]) == "3 · ?"`, `title(for: []) == "?"`.
@@ -195,11 +198,12 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
   - `@MainActor @Observable final class SpaceIndicatorModel`.
 
 Behaviour to implement:
-- `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator`, call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
-- Label: `Image(nsImage: TitleImage.make(model.title))` with `.accessibilityLabel(model.title)` (MenuBarExtra ignores font modifiers; `TitleImage` in Core draws the tabular-digit font into a template image). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
+- `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator` (ignoring `isTerminated` ones, after waiting up to 1 s via `SingleInstance.anotherInstanceRemains` for it to exit — final fix wave), call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
+- Label: `Image(nsImage: TitleImage.make(model.title))` with `.accessibilityLabel(model.title)`; `TitleImage` also sets the image's `accessibilityDescription` to the title (MenuBarExtra ignores font modifiers; `TitleImage` in Core draws the tabular-digit font into a template image). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
 - Model init: `refresh()` (title = `SpaceNumbering.title(for: CGS.spaceNumbers())`), observers for `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) and `NSApplication.didChangeScreenParametersNotification` (both call `refresh()`), an observer for `NSMenu.didBeginTrackingNotification` that re-invalidates the Launch at Login state, then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors.
 - Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
-- Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus, so no `didActivateApplicationNotification` observer is needed for the number. The model does observe `NSWorkspace.didActivateApplicationNotification` only to restore focus to the previous app when this app is activated.
+- Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus. The model observes `NSWorkspace.didActivateApplicationNotification` to restore focus to the previous app when this app is activated.
+- Final fix wave: `refresh()` also runs on `didActivateApplicationNotification`, `NSWorkspace.didTerminateApplicationNotification` and `NSMenu.didBeginTrackingNotification`, because a Space's position can change without a Space switch (reordering in Mission Control, quitting a full-screen app before the current Space). No polling timer.
 
 - [ ] **Step 1: Write the `TitleImageTests`, then implement the files above.**
 - [ ] **Step 2: Build and run tests**
@@ -220,7 +224,7 @@ Behaviour to implement:
   - Click into a window on the other display: the label does not change (it doesn't depend on focus).
   - Plugging or unplugging a display refreshes the label (one number fewer or more).
   - Turn "Displays have separate Spaces" off (needs log out): the label shows a single number.
-- [ ] **Step 5: Commit** — `git add -A && git commit -m "Wire status item, menu, Space triggers and Launch at Login"`
+- [ ] **Step 5: Commit** — `git add -A && git commit -m "Wire menu bar extra, menu, Space triggers and Launch at Login"`
 
 ---
 
@@ -234,7 +238,7 @@ Behaviour to implement:
 
 Behaviour (spec §Cleanup), in order:
 1. Unless `SI_SKIP_PROCESSES=1`:
-   - If `pgrep -x "Space Indicator"` finds it, run `osascript -e 'quit app id "com.mohandong.SpaceIndicator"'`. If it's still running after 2 seconds, run `pkill -x "Space Indicator"`.
+   - If `pgrep -x "Space Indicator"` finds it, run `osascript -e 'quit app id "com.mohandong.SpaceIndicator"'`. If it's still running after 2 seconds, run `pkill -x "Space Indicator"`; if it's still running up to 2 seconds after that, run `pkill -9 -x "Space Indicator"` (final fix wave).
    - Run `launchctl bootout "gui/$(id -u)/com.mohandong.SpaceIndicator" 2>/dev/null || true`.
 2. Remove `$HOME/Library/LaunchAgents/com.mohandong.SpaceIndicator.plist`.
 3. Remove `$SI_APPLICATIONS_DIR/Space Indicator.app` only if it's a symlink (`[ -L ]`) whose `readlink` matches `*/opt/space-indicator/Space Indicator.app` or `*/Cellar/space-indicator/*/Space Indicator.app` (i.e. points into the Homebrew prefix). Otherwise print `skipped (not a Homebrew symlink): <path>`.
@@ -277,7 +281,7 @@ Formula decisions:
     - `quiet_system("xcodebuild", "-checkFirstLaunchStatus")` false → `sudo xcodebuild -runFirstLaunch`
   - Then `system "xcodebuild", "-project", "SpaceIndicator.xcodeproj", "-scheme", "SpaceIndicator", "-configuration", "Release", "-derivedDataPath", "build", "CODE_SIGN_IDENTITY=-", "MARKETING_VERSION=#{version}", "build"`.
   - Then `prefix.install "build/Build/Products/Release/Space Indicator.app"` and `bin.install "scripts/space-indicator-cleanup"`.
-- **`caveats`:** the Setup and Common pitfalls lists from the spec, word for word in substance, using `#{opt_prefix}` in the `ln -sfn` command.
+- **`caveats`:** the Setup and Common pitfalls lists from the spec, word for word in substance, using `#{opt_prefix}` in the `ln -sfn` command. This includes that turning on Launch at Login shows macOS's "Background Items Added" notice, which is expected.
 - **`test`:**
   - `assert_predicate prefix/"Space Indicator.app/Contents/MacOS/Space Indicator", :executable?`
   - `assert_equal "true", shell_output("/usr/libexec/PlistBuddy -c 'Print :LSUIElement' '#{prefix}/Space Indicator.app/Contents/Info.plist'").strip`

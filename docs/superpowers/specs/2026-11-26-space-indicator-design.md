@@ -58,7 +58,7 @@ Declared with `@_silgen_name` (no bridging header):
 - `CGSMainConnectionID() -> Int32`
 - `CGSCopyManagedDisplaySpaces(_ cid: Int32) -> CFArray` — per-display array of dictionaries; each has `"Display Identifier"`, `"Current Space"` (dict with `ManagedSpaceID`), and `"Spaces"` (array in Mission Control order, each with `ManagedSpaceID` and `type`: 0 = desktop, 4 = full-screen).
 
-Algorithm: for each display dict with a `"Spaces"` array, the number is the 1-based index of its `"Current Space"` `ManagedSpaceID` within its own `"Spaces"`. Every Space type counts (desktop 1, desktop 2, full-screen Safari → 3, next desktop → 4). A display's number is `?` if the current ID is missing, 0, not in `Spaces` or in it more than once, or any `Spaces` entry has an unreadable ID. Displays are ordered by screen position (`NSScreen.screens` sorted by `frame.minX`, then `minY`, mapped to display UUID strings, which match CGS's `"Display Identifier"`); unmatched ones follow in CGS order.
+Algorithm: for each display dict with a `"Spaces"` array, the number is the 1-based index of its `"Current Space"` `ManagedSpaceID` within its own `"Spaces"`. Every Space type counts (desktop 1, desktop 2, full-screen Safari → 3, next desktop → 4). A display's number is `?` if the current ID is missing, 0, not in `Spaces` or in it more than once, or any `Spaces` entry has an unreadable ID (an ID must be an integer `NSNumber`, not a float or a Bool). A display dict that has a `"Display Identifier"` but no readable `"Spaces"` array is `?` too; a dict with neither is skipped. Displays are ordered by screen position (`NSScreen.screens` sorted by `frame.minX`, then `minY`, mapped to display UUID strings, which match CGS's `"Display Identifier"`); unmatched ones follow in CGS order.
 
 This works the same with "Displays have separate Spaces" on (each display's array numbers from 1) or off (a single array spanning displays).
 
@@ -68,20 +68,24 @@ The parsing/numbering is a pure function over the CGS array (`numbers(displays:s
 
 ### Single instance
 
-At launch, if another running application has bundle ID `com.mohandong.SpaceIndicator` (`NSRunningApplication.runningApplications(withBundleIdentifier:)`, excluding the current process), exit immediately. Prevents two menu bar items when the LaunchAgent copy and an `open`-launched copy overlap. *(Designer's call.)*
+At launch, if another running application has bundle ID `com.mohandong.SpaceIndicator` (`NSRunningApplication.runningApplications(withBundleIdentifier:)`, excluding the current process and any instance that `isTerminated`), wait up to about 1 s in short polls for it to exit; if it's still there, exit. Prevents two menu bar items when the LaunchAgent copy and an `open`-launched copy overlap, without making Quit followed by an immediate relaunch silently exit. *(Designer's call.)*
+
+The model hands focus back to the previously frontmost app when this app gets activated (e.g. by `open` on the running copy). This would fight any window or alert, which the app has none of by design.
 
 ### Update triggers
 
-Recompute at launch, on `NSWorkspace.shared.notificationCenter` `activeSpaceDidChangeNotification`, and on `NSApplication.didChangeScreenParametersNotification`.
+Recompute at launch, on `NSWorkspace.shared.notificationCenter` `activeSpaceDidChangeNotification`, `didActivateApplicationNotification` and `didTerminateApplicationNotification`, on `NSApplication.didChangeScreenParametersNotification`, and on `NSMenu.didBeginTrackingNotification`. No polling timer.
 
-Correction (history): an earlier design numbered only the focused display's Space via `CGSGetActiveSpace`, which the app no longer calls. Moving focus between displays changes that value without firing `activeSpaceDidChangeNotification`, so the earlier "multi-display check passed" note was wrong. The label no longer depends on focus (it shows every display), so the two triggers above are sufficient and no `didActivateApplicationNotification` observer is needed for the number.
+The extra triggers exist because a Space's position can change without a Space switch: reordering desktops in Mission Control, or quitting a full-screen app whose Space comes before the current one. They narrow the window in which the number can be stale; opening the menu always refreshes it.
+
+Correction (history): an earlier design numbered only the focused display's Space via `CGSGetActiveSpace`, which the app no longer calls. Moving focus between displays changes that value without firing `activeSpaceDidChangeNotification`, so the earlier "multi-display check passed" note was wrong. The label no longer depends on focus (it shows every display); `didActivateApplicationNotification` refreshes it only for the position changes above.
 
 ### Menu bar item
 
-- SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Image(nsImage:)` of the number string (see Font).
+- SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Image(nsImage:)` of the number string (see Font). The image's `accessibilityDescription` is the title, as well as the label's `.accessibilityLabel`, so VoiceOver reads the number.
 - Font: `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)`, drawn into a template `NSImage` (`TitleImage`) because the MenuBarExtra label ignores SwiftUI font modifiers — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
 - Menu (`MenuBarExtra` content):
-  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists); the model also re-invalidates it on `NSMenu.didBeginTrackingNotification` (confirmed by the owner). The model hands focus back to the previously frontmost app when this app gets activated (e.g. by `open`).
+  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists); the model also re-invalidates it on `NSMenu.didBeginTrackingNotification` (confirmed by the owner).
   - separator
   - **Quit** with key equivalent `q` (⌘Q) → `NSApp.terminate(nil)`.
 
@@ -117,7 +121,7 @@ In the existing tap `powersagitar/homebrew-tap`, file `Formula/space-indicator.r
 
 - Source: GitHub tag tarball of `github.com/powersagitar/space-indicator` (already the repo's `origin`). Tags are `vX.Y.Z`, first release `v0.1.0`. No bottle — builds from source. *(Tag format is the designer's call.)*
 - `depends_on xcode: :build`, `depends_on arch: :arm64`, and a macOS 27 minimum (use Homebrew's symbol for macOS 27 if it exists, else check `MacOS.version` in `install` and `odie`).
-- `install`: `xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build SYMROOT=build CODE_SIGN_IDENTITY=- build`, then `prefix.install "build/.../Space Indicator.app"`.
+- `install`: `xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- MARKETING_VERSION=#{version} build`, then `prefix.install "build/Build/Products/Release/Space Indicator.app"`.
 - **Early checks in `install`** (before `xcodebuild`): `odie` with the exact fix command if the active developer directory isn't a full Xcode (`xcode-select -p` ends in `CommandLineTools`), if the license isn't accepted (`xcodebuild -license check`), or if first-launch components are missing (`xcodebuild -checkFirstLaunchStatus`). Caveats print only after a successful install (and in `brew info`), so these checks are what a fresh machine actually hits. *(Designer's call, added alongside the caveats requested.)*
 - `caveats` — two parts:
   - **Setup:** the one-time symlink command `ln -sfn "#{opt_prefix}/Space Indicator.app" "/Applications/Space Indicator.app"`, how to start it (`open "/Applications/Space Indicator.app"`, or Spotlight once linked), and that Launch at Login is in its menu.
@@ -128,13 +132,15 @@ In the existing tap `powersagitar/homebrew-tap`, file `Formula/space-indicator.r
     - Apple Silicon and macOS 27 or later only.
     - If the number doesn't appear: check System Settings → Menu Bar, where items can be hidden, and on notched MacBooks a full menu bar can push it behind the notch.
     - Nothing asks for permissions. A prompt asking for any means something is wrong.
+    - Turning on Launch at Login makes macOS show a "Background Items Added" notice. That's expected: it's the LaunchAgent plist being written.
     - Uninstalling: run `space-indicator-cleanup` *before* `brew uninstall` (see below).
+- `test`: assert the bundle's executable exists, `Info.plist` has `LSUIElement`, and `space-indicator-cleanup` is executable.
 
 ### Cleanup script (zap equivalent)
 
 Formulas have no `zap` stanza (that's cask-only), so the formula installs a script as `bin/space-indicator-cleanup` (source in the repo at `scripts/space-indicator-cleanup`, POSIX `sh`). It does what a cask `zap` would:
 
-1. Quits the running app (`osascript -e 'quit app id "com.mohandong.SpaceIndicator"'`, falling back to `pkill -x "Space Indicator"`).
+1. Quits the running app (`osascript -e 'quit app id "com.mohandong.SpaceIndicator"'`, falling back to `pkill -x "Space Indicator"`, then `pkill -9 -x "Space Indicator"` if it's still running about 2 s later).
 2. `launchctl bootout gui/$(id -u)/com.mohandong.SpaceIndicator` if it's loaded (ignore errors).
 3. Removes `~/Library/LaunchAgents/com.mohandong.SpaceIndicator.plist`.
 4. Removes `/Applications/Space Indicator.app` only if it's a symlink into the Homebrew prefix (never a real app bundle).
@@ -143,13 +149,11 @@ Formulas have no `zap` stanza (that's cask-only), so the formula installs a scri
 
 It doesn't run `brew uninstall` itself; the caveats say to run it first, then `brew uninstall space-indicator`. *(Designer's call: a script can't run from a formula's uninstall hook, since Homebrew has none.)*
 
-- `test`: assert the bundle's executable exists, `Info.plist` has `LSUIElement`, and `space-indicator-cleanup` is executable.
-
-**`/Applications` symlink (owner's requirement):** `/Applications/Space Indicator.app` is a symlink to `<prefix>/opt/space-indicator/Space Indicator.app`. It points at `opt`, not the Cellar, so it survives `brew upgrade`. Homebrew's `post_install` sandbox can only write inside Homebrew's own folders (checked in `Library/Homebrew/formula_installer.rb`), so the formula can't create it. The caveats give the one-time `ln` command, and the release step in this plan runs it. Launching through the symlink doesn't affect Launch at Login: `Bundle.main.bundleURL` resolves to the Cellar path, which gets rewritten to `opt` as usual. The builder must confirm that resolution actually happens through the symlink and resolve it explicitly if not.
+**`/Applications` symlink (owner's requirement):** `/Applications/Space Indicator.app` is a symlink to `<prefix>/opt/space-indicator/Space Indicator.app`. It points at `opt`, not the Cellar, so it survives `brew upgrade`. Homebrew's `post_install` sandbox can only write inside Homebrew's own folders (checked in `Library/Homebrew/formula_installer.rb`), so the formula can't create it. The caveats give the one-time `ln` command, which is also run once during release (see Release and install). Launching through the symlink doesn't affect Launch at Login: `Bundle.main.bundleURL` resolves to the Cellar path, which gets rewritten to `opt` as usual. The builder must confirm that resolution actually happens through the symlink and resolve it explicitly if not.
 
 ### Testing
 
-- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, malformed input → skipped or `?`, title joining); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
+- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, float or Bool IDs → `?`, malformed input → skipped or `?`, title joining); single-instance wait (a quitting instance that exits within the wait is ignored); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
 - Manual check on the real machine: switching Spaces, full-screen app, plug/unplug a display, toggle Launch at Login and log out/in, Quit doesn't relaunch, launching a second copy exits.
 
 ### Release and install (in scope)
