@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "superpowers@anthropic-plugin-directory": true,
+    "claude-md-management@anthropic-plugin-directory": true,
+    "swift-lsp@claude-plugins-official": true,
+    "liquid-glass@anthropic-plugin-directory": true,
+    "swiftui-guidance-for-macos@anthropic-plugin-directory": true
+  }
+}
