@@ -28,7 +28,7 @@
 ## Review Focus
 
 1. **Space IDs arrive as `NSNumber`, sometimes negative-typed `Int64`.** The CGS dictionaries bridge as `NSNumber`, and a reader that only accepts `UInt64` gets `?` forever. Expected: any integer `NSNumber` is read as the ID. Test `idsReadFromAnyIntegerNSNumber` in Task 2.
-2. **One display's entry is malformed while another is fine.** Expected: the bad display is skipped and the active Space is still numbered on the good one. But if the active display's own `Spaces` array has an entry without a readable ID, return `nil`, since its index can't be trusted. Tests `skipsMalformedOtherDisplay` and `unreadableEntryOnActiveDisplayIsNil` in Task 2.
+2. **One display's entry is malformed while another is fine.** Expected: a display dict without a `Spaces` array is skipped and the other displays are still numbered. If a display's own `Spaces` array has an entry without a readable ID, or holds its current ID more than once, that display is `nil` (shown as `?`), since its index can't be trusted; the other displays keep their numbers. Tests `skipsMalformedOtherDisplay`, `unreadableEntryMakesThatDisplayNil` and `duplicateCurrentIDMakesThatDisplayNil` in Task 2.
 3. **The LaunchAgent plist exists but is corrupt.** Expected: the checkmark stays on because the file exists, and self-repair from a Cellar install overwrites it with a valid plist. Test `repairOverwritesCorruptPlist` in Task 3.
 4. **`~/Library/LaunchAgents` doesn't exist on a fresh account.** Expected: turning it on creates the directory. Test `installCreatesMissingDirectory` in Task 3.
 5. **A revision version (`0.1.0_1`) or an Intel-style `/usr/local` prefix.** Expected: it still rewrites to `opt`. Test `rewritesRevisionAndUsrLocal` in Task 3.
@@ -40,13 +40,15 @@
 ```
 SpaceIndicator.xcodeproj/project.pbxproj                    # hand-written, objectVersion 77, synchronized folders
 SpaceIndicator.xcodeproj/xcshareddata/xcschemes/SpaceIndicator.xcscheme   # shared scheme: build app, test SpaceIndicatorTests
-SpaceIndicator/App/SpaceIndicatorApp.swift  # @main App: single-instance check, MenuBarExtra scene
-SpaceIndicator/App/SpaceIndicatorApp.swift + SpaceIndicatorModel.swift   # MenuBarExtra, observers, launch-time self-repair
+SpaceIndicator/App/SpaceIndicatorApp.swift    # @main App: single-instance check, MenuBarExtra scene
+SpaceIndicator/App/SpaceIndicatorModel.swift  # title, observers, Launch at Login binding, launch-time self-repair
 SpaceIndicator/App/CGS.swift           # @_silgen_name private decls + live read
 SpaceIndicator/Core/SpaceNumbering.swift  # pure numbering + title
 SpaceIndicator/Core/LaunchAgent.swift     # pure path/plist + LaunchAgentStore file IO
+SpaceIndicator/Core/TitleImage.swift      # title string → tabular-digit template NSImage
 SpaceIndicatorTests/SpaceNumberingTests.swift
 SpaceIndicatorTests/LaunchAgentTests.swift
+SpaceIndicatorTests/TitleImageTests.swift
 scripts/space-indicator-cleanup        # POSIX sh, installed to bin/
 scripts/test-cleanup.sh                # sandboxed test of the cleanup script
 <tap>/Formula/space-indicator.rb       # tap = /opt/homebrew/Library/Taps/powersagitar/homebrew-tap (origin git@github.com:powersagitar/homebrew-tap.git)
@@ -98,31 +100,34 @@ Project decisions (the pbxproj is hand-written; no Xcode GUI, no XcodeGen):
   - `enum SpaceNumbering`
   - `static func numbers(displays: [[String: Any]], screenOrder: [String]) -> [Int?]` returns, per display, the 1-based position of its `"Current Space"` in its own `"Spaces"` array; displays in `screenOrder` (by `"Display Identifier"`) come first, the rest in CGS order.
   - `static func title(for numbers: [Int?]) -> String` joins with ` · `, nil as `?`, empty as `?`.
-  - Changed after Task 4 (owner request; a spike showed a status item is mirrored across displays, so one label lists every display's number). Replaces `number(activeSpaceID:displays:)`.
+  - Changed after Task 4 (owner request; a spike showed a status item is mirrored across displays, so one label lists every display's number). This replaced the original single-number API.
 
 Rules:
 - An ID is read from key `ManagedSpaceID` as `NSNumber` → `uint64Value`, accepting any integer NSNumber.
 - Current ID missing, unreadable or 0 → that display is `nil`.
 - A display dict without an `[[String: Any]]` `"Spaces"` is skipped.
-- A display whose `Spaces` has any entry with an unreadable ID, or lacks the current ID → `nil`.
+- A display whose `Spaces` has any entry with an unreadable ID, lacks the current ID, or contains it more than once → `nil`.
 - `type` is ignored, because every Space counts.
 
-Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [String: Any]` and `func display(_ spaces: [[String: Any]]) -> [String: Any]` (adds `"Display Identifier": "Main"`).
+Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [String: Any]` and `func display(_ spaces: [[String: Any]], current: Any? = nil, id: String = "Main") -> [String: Any]` (sets `"Display Identifier": id` and, when `current` is non-nil, `"Current Space": ["ManagedSpaceID": current]`). The suite's `numbers(_:order:)` calls `SpaceNumbering.numbers(displays:screenOrder:)` with `order` defaulting to `[]`.
 
-- [ ] **Step 1: Write the failing tests** (`@Suite struct SpaceNumberingTests`):
-  - `singleDisplay`: spaces 10, 11, 12; active 11 → `2`.
-  - `fullScreenCountsByPosition`: 10 (type 0), 11 (type 0), 50 (type 4), 12 (type 0); active 50 → `3`; active 12 → `4`.
-  - `separateSpacesSecondDisplay`: display A [10, 11], display B [20, 21, 22]; active 22 → `3`; active 10 → `1`.
-  - `activeMissingIsNil`: active 99 → `nil`; active 0 → `nil`; `displays: []` → `nil`.
-  - `idsReadFromAnyIntegerNSNumber`: ids given as `NSNumber(value: Int64(10))`, `NSNumber(value: UInt64(11))`, `NSNumber(value: Int32(12))`; active 12 → `3`.
-  - `skipsMalformedOtherDisplay`: `["Display Identifier": "X"]` (no Spaces), then display [10, 11]; active 11 → `2`.
-  - `unreadableEntryOnActiveDisplayIsNil`: display [10, `space("bad")`, 12]; active 12 → `nil`.
-  - `titleFormatting`: `title(for: 3) == "3"`, `title(for: nil) == "?"`.
+- [ ] **Step 1: Write the failing tests** (`@Suite struct SpaceNumberingTests`, 11 tests):
+  - `singleDisplay`: spaces 10, 11, 12; current 11 → `[2]`.
+  - `mainSingleArrayOneNumber`: spaces 10, 11, 20 in one `Main` array; current 20 → `[3]`.
+  - `fullScreenCountsByPosition`: 10 (type 0), 11 (type 0), 50 (type 4), 12 (type 0); current 50 → `[3]`; current 12 → `[4]`.
+  - `eachDisplayHasItsOwnNumber`: display A [10, 11] current 10, display B [20, 21, 22] current 22 → `[1, 3]`.
+  - `orderedByScreenOrderUnknownLast`: A [10, 11] current 11, B [20, 21] current 20, C [30, 31, 32] current 32; order `["B", "A"]` → `[1, 2, 3]`; order `["C"]` → `[3, 2, 1]`.
+  - `missingOrUnknownCurrentIsNil`: spaces 10, 11 with no current → `[nil]`; current 0 → `[nil]`; current 99 → `[nil]`; `displays: []` → `[]`.
+  - `idsReadFromAnyIntegerNSNumber`: ids given as `NSNumber(value: Int64(10))`, `NSNumber(value: UInt64(11))`, `NSNumber(value: Int32(12))`; current `NSNumber(value: Int32(12))` → `[3]`; current `NSNumber(value: 11.0)` → `[nil]`.
+  - `skipsMalformedOtherDisplay`: `["Display Identifier": "X"]` (no Spaces), then display [10, 11] current 11 → `[2]`.
+  - `unreadableEntryMakesThatDisplayNil`: A [10, `space("bad")`, 12] current 12, B [20, 21] current 21 → `[nil, 2]`.
+  - `duplicateCurrentIDMakesThatDisplayNil`: A [10, 11, 10] current 10, B [20, 21] current 21 → `[nil, 2]`.
+  - `titleFormatting`: `title(for: [2, 1]) == "2 · 1"`, `title(for: [3]) == "3"`, `title(for: [3, nil]) == "3 · ?"`, `title(for: []) == "?"`.
 - [ ] **Step 2: Run, expect failure**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build -only-testing:SpaceIndicatorTests/SpaceNumberingTests`
-  Expected: build fails (`number`/`title` not found).
-- [ ] **Step 3: Implement `SpaceNumbering.number` and `title`** per the rules above.
-- [ ] **Step 4: Run, expect pass** (same command): `** TEST SUCCEEDED **`, 8 tests.
+  Expected: build fails (`numbers`/`title` not found).
+- [ ] **Step 3: Implement `SpaceNumbering.numbers` and `title`** per the rules above.
+- [ ] **Step 4: Run, expect pass** (same command): `** TEST SUCCEEDED **`, 11 tests.
 - [ ] **Step 5: Commit** — `git commit -am "Add Space numbering"` (add new files first if any).
 
 ---
@@ -170,7 +175,7 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 - [ ] **Step 3: Implement `LaunchAgent` and `LaunchAgentStore`** per the interface above, using `NSRegularExpression` or a Swift `Regex` for the rewrite.
 - [ ] **Step 4: Run all tests, expect pass**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
-  Expected: `** TEST SUCCEEDED **`, 18 tests.
+  Expected: `** TEST SUCCEEDED **`, 21 tests (11 numbering + 10 LaunchAgent; `TitleImageTests` adds 2 more in Task 4, for 23).
 - [ ] **Step 5: Commit** — `git add -A && git commit -m "Add LaunchAgent path logic and store"`
 
 ---
@@ -178,7 +183,8 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 ### Task 4: App wiring (CGS, menu bar extra, triggers, single instance)
 
 **Files:**
-- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`
+- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`, `SpaceIndicator/Core/TitleImage.swift`
+- Test: `SpaceIndicatorTests/TitleImageTests.swift` (`"1"` and `"8"` give equal widths; `"?"` gives a template image)
 - Delete: `SpaceIndicator/App/main.swift`
 
 **Interfaces:**
@@ -195,10 +201,10 @@ Behaviour to implement:
 - Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
 - Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus, so no `didActivateApplicationNotification` observer is needed for the number. The model does observe `NSWorkspace.didActivateApplicationNotification` only to restore focus to the previous app when this app is activated.
 
-- [ ] **Step 1: Implement the three files above.**
+- [ ] **Step 1: Write the `TitleImageTests`, then implement the files above.**
 - [ ] **Step 2: Build and run tests**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
-  Expected: `** TEST SUCCEEDED **`, with no warnings in App/ files about Sendable or MainActor isolation.
+  Expected: `** TEST SUCCEEDED **`, 23 tests, with no warnings in App/ or Core/ files about Sendable or MainActor isolation.
 - [ ] **Step 3: Manual check, single display.** Run `open "build/Build/Products/Debug/Space Indicator.app"` and check:
   - A number appears, there's no Dock icon, and no permission prompt appears.
   - Switching Spaces with Ctrl-←/→ updates the number.
@@ -209,10 +215,11 @@ Behaviour to implement:
   - Quit removes the item.
 - [ ] **Step 4: Manual check, multiple displays** (ask the owner to do this if no second display is attached):
   - Turn on "Displays have separate Spaces".
-  - Click into a window on the other display. The number should change to that display's Space position.
-  - If it doesn't change, also observe `NSWorkspace.didActivateApplicationNotification` and re-check.
-  - If no second display is available, add that observer anyway, because it's harmless, and note this in the commit message.
-  - Plugging or unplugging a display should refresh the number.
+  - The label shows one number per display, left to right as the displays are arranged, joined by ` · ` (e.g. `2 · 1`), and the same label appears in every display's menu bar.
+  - Switch Spaces on one display: only that display's number changes.
+  - Click into a window on the other display: the label does not change (it doesn't depend on focus).
+  - Plugging or unplugging a display refreshes the label (one number fewer or more).
+  - Turn "Displays have separate Spaces" off (needs log out): the label shows a single number.
 - [ ] **Step 5: Commit** — `git add -A && git commit -m "Wire status item, menu, Space triggers and Launch at Login"`
 
 ---
@@ -256,7 +263,7 @@ Behaviour (spec §Cleanup), in order:
 
 Formula decisions:
 - **Metadata:**
-  - `desc "Menu bar app showing the active macOS Space number"`
+  - `desc "Menu bar app showing the current macOS Space number"`
   - `homepage "https://github.com/powersagitar/space-indicator"`
   - `url "https://github.com/powersagitar/space-indicator/archive/refs/tags/v0.1.0.tar.gz"`, plus its `sha256`
   - `license "GPL-3.0-only"`

@@ -79,6 +79,14 @@ private func display(_ spaces: [[String: Any]], current: Any? = nil, id: String 
         #expect(numbers(d) == [nil, 2])
     }
 
+    @Test func duplicateCurrentIDMakesThatDisplayNil() {
+        let d = [
+            display([space(10), space(11), space(10)], current: 10, id: "A"),
+            display([space(20), space(21)], current: 21, id: "B"),
+        ]
+        #expect(numbers(d) == [nil, 2])
+    }
+
     @Test func titleFormatting() {
         #expect(SpaceNumbering.title(for: [2, 1]) == "2 \u{B7} 1")
         #expect(SpaceNumbering.title(for: [3]) == "3")

@@ -29,9 +29,10 @@ enum SpaceNumbering {
         guard let current = display["Current Space"] as? [String: Any],
               let currentID = spaceID(current), currentID != 0 else { return nil }
         let ids = spaces.map(spaceID)
-        // An unreadable entry makes the position untrustworthy.
+        // An unreadable entry or a repeated current ID makes the position untrustworthy.
         guard !ids.contains(where: { $0 == nil }),
-              let index = ids.firstIndex(of: currentID) else { return nil }
+              let index = ids.firstIndex(of: currentID),
+              ids.lastIndex(of: currentID) == index else { return nil }
         return index + 1
     }
 

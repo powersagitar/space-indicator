@@ -4,7 +4,7 @@ Date: 2026-11-26
 
 ## Intent
 
-A personal macOS menu bar app that shows the 1-based number of the active Space, so the owner always knows where they are among their Spaces. Clicking the number opens a tiny menu (Launch at Login, Quit). No windows, no Dock icon. Personal use only: installed from source through the owner's existing Homebrew tap.
+A personal macOS menu bar app that shows each display's current Space as a 1-based number, so the owner always knows where they are among their Spaces. Clicking the number opens a tiny menu (Launch at Login, Quit). No windows, no Dock icon. Personal use only: installed from source through the owner's existing Homebrew tap.
 
 ## Goals
 
@@ -58,7 +58,7 @@ Declared with `@_silgen_name` (no bridging header):
 - `CGSMainConnectionID() -> Int32`
 - `CGSCopyManagedDisplaySpaces(_ cid: Int32) -> CFArray` — per-display array of dictionaries; each has `"Display Identifier"`, `"Current Space"` (dict with `ManagedSpaceID`), and `"Spaces"` (array in Mission Control order, each with `ManagedSpaceID` and `type`: 0 = desktop, 4 = full-screen).
 
-Algorithm: for each display dict with a `"Spaces"` array, the number is the 1-based index of its `"Current Space"` `ManagedSpaceID` within its own `"Spaces"`. Every Space type counts (desktop 1, desktop 2, full-screen Safari → 3, next desktop → 4). A display's number is `?` if the current ID is missing, 0, not in `Spaces`, or any `Spaces` entry has an unreadable ID. Displays are ordered by screen position (`NSScreen.screens` sorted by `frame.minX`, then `minY`, mapped to display UUID strings, which match CGS's `"Display Identifier"`); unmatched ones follow in CGS order.
+Algorithm: for each display dict with a `"Spaces"` array, the number is the 1-based index of its `"Current Space"` `ManagedSpaceID` within its own `"Spaces"`. Every Space type counts (desktop 1, desktop 2, full-screen Safari → 3, next desktop → 4). A display's number is `?` if the current ID is missing, 0, not in `Spaces` or in it more than once, or any `Spaces` entry has an unreadable ID. Displays are ordered by screen position (`NSScreen.screens` sorted by `frame.minX`, then `minY`, mapped to display UUID strings, which match CGS's `"Display Identifier"`); unmatched ones follow in CGS order.
 
 This works the same with "Displays have separate Spaces" on (each display's array numbers from 1) or off (a single array spanning displays).
 
@@ -74,7 +74,7 @@ At launch, if another running application has bundle ID `com.mohandong.SpaceIndi
 
 Recompute at launch, on `NSWorkspace.shared.notificationCenter` `activeSpaceDidChangeNotification`, and on `NSApplication.didChangeScreenParametersNotification`.
 
-Correction: moving focus between displays changes `CGSGetActiveSpace` without firing `activeSpaceDidChangeNotification`, so the earlier "multi-display check passed" note was wrong. The label no longer depends on focus (it shows every display), so the two triggers above are sufficient and no `didActivateApplicationNotification` observer is needed for the number.
+Correction (history): an earlier design numbered only the focused display's Space via `CGSGetActiveSpace`, which the app no longer calls. Moving focus between displays changes that value without firing `activeSpaceDidChangeNotification`, so the earlier "multi-display check passed" note was wrong. The label no longer depends on focus (it shows every display), so the two triggers above are sufficient and no `didActivateApplicationNotification` observer is needed for the number.
 
 ### Menu bar item
 
@@ -149,7 +149,7 @@ It doesn't run `brew uninstall` itself; the caveats say to run it first, then `b
 
 ### Testing
 
-- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing → `?`, malformed input → skipped or `?`, title joining); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
+- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, malformed input → skipped or `?`, title joining); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
 - Manual check on the real machine: switching Spaces, full-screen app, plug/unplug a display, toggle Launch at Login and log out/in, Quit doesn't relaunch, launching a second copy exits.
 
 ### Release and install (in scope)
