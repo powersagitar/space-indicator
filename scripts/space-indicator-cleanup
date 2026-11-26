@@ -12,6 +12,14 @@ if [ "${SI_SKIP_PROCESSES:-}" != "1" ]; then
     sleep 2
     if pgrep -x "Space Indicator" >/dev/null 2>&1; then
       pkill -x "Space Indicator" || true
+      i=0
+      while [ "$i" -lt 2 ] && pgrep -x "Space Indicator" >/dev/null 2>&1; do
+        sleep 1
+        i=$((i + 1))
+      done
+      if pgrep -x "Space Indicator" >/dev/null 2>&1; then
+        pkill -9 -x "Space Indicator" || true
+      fi
     fi
   fi
   launchctl bootout "gui/$(id -u)/$ID" 2>/dev/null || true
