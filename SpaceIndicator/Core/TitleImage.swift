@@ -8,7 +8,7 @@ enum TitleImage {
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
         let text = NSAttributedString(string: title, attributes: attributes)
         let size = text.size()
-        let image = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)), flipped: false) { rect in
+        let image = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)), flipped: false) { _ in
             text.draw(at: .zero)
             return true
         }

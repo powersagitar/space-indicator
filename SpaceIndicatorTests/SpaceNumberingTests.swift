@@ -20,8 +20,12 @@ private func display(_ spaces: [[String: Any]], current: Any? = nil, id: String 
         #expect(numbers([display([space(10), space(11), space(12)], current: 11)]) == [2])
     }
 
+    /// "Displays have separate Spaces" off: CGS lists one `Main` entry, which matches none
+    /// of the screens' UUIDs, so two screens still give one number.
     @Test func mainSingleArrayOneNumber() {
-        #expect(numbers([display([space(10), space(11), space(20)], current: 20)]) == [3])
+        let order = ["37D8832A-2D66-02CA-B9F7-8F30A301B230", "5D1C6A3E-1F0B-4C2E-9A7D-2B8E4F6A1C90"]
+        let d = [display([space(10), space(11), space(20)], current: 20, id: "Main")]
+        #expect(numbers(d, order: order) == [3])
     }
 
     @Test func fullScreenCountsByPosition() {

@@ -3,6 +3,7 @@ import Testing
 
 private let cellar = "/opt/homebrew/Cellar/space-indicator/0.1.0/Space Indicator.app"
 private let opt = "/opt/homebrew/opt/space-indicator/Space Indicator.app"
+private let optExe = opt + "/Contents/MacOS/Space Indicator"
 private let derivedData =
     "/Users/me/Library/Developer/Xcode/DerivedData/X/Build/Products/Debug/Space Indicator.app"
 
@@ -42,7 +43,7 @@ private func withStore(_ body: (LaunchAgentStore) throws -> Void) throws {
     @Test func plistContents() {
         let exe = LaunchAgent.executablePath(appPath: opt)
         let dict = LaunchAgent.plist(executablePath: exe)
-        #expect(exe == opt + "/Contents/MacOS/Space Indicator")
+        #expect(exe == optExe)
         #expect(dict["Label"] as? String == "com.mohandong.SpaceIndicator")
         #expect(dict["ProgramArguments"] as? [String] == [exe])
         #expect(dict["RunAtLoad"] as? Bool == true)
@@ -76,7 +77,7 @@ private func withStore(_ body: (LaunchAgentStore) throws -> Void) throws {
             try store.install(executablePath: "/old/path")
             let r = try store.repairIfNeeded(resolvedBundlePath: cellar)
             #expect(r)
-            #expect(store.installedExecutablePath() == opt + "/Contents/MacOS/Space Indicator")
+            #expect(store.installedExecutablePath() == optExe)
             let again = try store.repairIfNeeded(resolvedBundlePath: cellar)
             #expect(!again)
         }
@@ -90,7 +91,7 @@ private func withStore(_ body: (LaunchAgentStore) throws -> Void) throws {
             #expect(store.isInstalled())
             let r = try store.repairIfNeeded(resolvedBundlePath: cellar)
             #expect(r)
-            #expect(store.installedExecutablePath() == opt + "/Contents/MacOS/Space Indicator")
+            #expect(store.installedExecutablePath() == optExe)
         }
     }
 

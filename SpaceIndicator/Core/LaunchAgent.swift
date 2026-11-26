@@ -1,33 +1,26 @@
 import Foundation
 
 enum LaunchAgent {
-    static let label = "com.mohandong.SpaceIndicator"
-
-    /// Built once. NSRegularExpression is Sendable, unlike Swift's `Regex`, so it can be a `static let`.
-    private static let cellarPattern = try! NSRegularExpression(
-        pattern: "^(.+)/Cellar/space-indicator/[^/]+/(.+)$")
-
-    /// The (prefix, rest) around `/Cellar/space-indicator/<version>/`, or nil.
-    private static func cellarParts(_ path: String) -> (prefix: String, rest: String)? {
-        let ns = path as NSString
-        guard let match = cellarPattern.firstMatch(
-            in: path, range: NSRange(location: 0, length: ns.length))
-        else { return nil }
-        return (ns.substring(with: match.range(at: 1)), ns.substring(with: match.range(at: 2)))
-    }
+    static let label = AppIdentity.bundleID
 
     /// Rewrites a Homebrew Cellar path to the stable `opt` path so the agent survives upgrades.
     static func stableAppPath(resolvedBundlePath: String) -> String {
-        guard let parts = cellarParts(resolvedBundlePath) else { return resolvedBundlePath }
-        return "\(parts.prefix)/opt/space-indicator/\(parts.rest)"
+        resolvedBundlePath.replacingOccurrences(
+            of: "^(.+)/Cellar/space-indicator/[^/]+/(.+)$",
+            with: "$1/opt/space-indicator/$2",
+            options: .regularExpression)
     }
 
     static func isCellarPath(_ resolvedBundlePath: String) -> Bool {
-        cellarParts(resolvedBundlePath) != nil
+        stableAppPath(resolvedBundlePath: resolvedBundlePath) != resolvedBundlePath
     }
 
     static func executablePath(appPath: String) -> String {
         appPath + "/Contents/MacOS/Space Indicator"
+    }
+
+    static func stableExecutablePath(resolvedBundlePath: String) -> String {
+        executablePath(appPath: stableAppPath(resolvedBundlePath: resolvedBundlePath))
     }
 
     static func plist(executablePath: String) -> [String: Any] {
@@ -43,10 +36,6 @@ enum LaunchAgent {
 
 struct LaunchAgentStore {
     let directory: URL
-
-    init(directory: URL) {
-        self.directory = directory
-    }
 
     static var user: LaunchAgentStore {
         LaunchAgentStore(
@@ -88,8 +77,7 @@ struct LaunchAgentStore {
     @discardableResult
     func repairIfNeeded(resolvedBundlePath: String) throws -> Bool {
         guard isInstalled(), LaunchAgent.isCellarPath(resolvedBundlePath) else { return false }
-        let desired = LaunchAgent.executablePath(
-            appPath: LaunchAgent.stableAppPath(resolvedBundlePath: resolvedBundlePath))
+        let desired = LaunchAgent.stableExecutablePath(resolvedBundlePath: resolvedBundlePath)
         guard installedExecutablePath() != desired else { return false }
         try install(executablePath: desired)
         return true
