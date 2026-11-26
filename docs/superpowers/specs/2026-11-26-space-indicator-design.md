@@ -82,8 +82,8 @@ Correction (history): an earlier design numbered only the focused display's Spac
 
 ### Menu bar item
 
-- SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Image(nsImage:)` of the number string (see Font). The image's `accessibilityDescription` is the title, as well as the label's `.accessibilityLabel`, so VoiceOver reads the number.
-- Font: `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)`, drawn into a template `NSImage` (`TitleImage`) because the MenuBarExtra label ignores SwiftUI font modifiers — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
+- SwiftUI `MenuBarExtra` (`.menu` style) whose label is a plain `Text` of the number string (see Font); VoiceOver reads the text.
+- Font: whatever the system gives a `MenuBarExtra` text label — SF Pro in the same weight as the clock (medium; measured), with proportional digits. The label ignores SwiftUI font, design (`.monospaced`), `.monospacedDigit()` and frame modifiers, so the width follows the digits (a `1` is ~2.5 pt narrower), shifting items to its left slightly on some Space changes; the text sits ~0.5 pt below the clock's. Accepted over the earlier tabular-digit template `NSImage`: that drew in regular weight (`NSFont.menuBarFont` reports regular, but the system draws its own menu bar text in medium), so it looked smaller, and it sat 1 pt low; matching the system by hand needed measured constants that could drift. *(Designer's call; spec said "SF Pro".)*
 - Menu (`MenuBarExtra` content):
   - **Launch at Login** — `Toggle` bound to the model's stored `launchAtLogin` (checkmark iff the LaunchAgent plist exists), which the model re-reads from disk at launch, after every toggle (whether or not it succeeded) and on `NSMenu.didBeginTrackingNotification` (confirmed by the owner).
   - separator
@@ -153,7 +153,7 @@ It doesn't run `brew uninstall` itself; the caveats say to run it first, then `b
 
 ### Testing
 
-- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, float or Bool IDs → `?`, malformed input → skipped or `?`, title joining); title image (equal digit widths, template image, accessibility description is the title); single-instance wait (a quitting instance that exits within the wait is ignored); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
+- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, float or Bool IDs → `?`, malformed input → skipped or `?`, title joining); single-instance wait (a quitting instance that exits within the wait is ignored); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
 - Manual check on the real machine: switching Spaces, full-screen app, plug/unplug a display, toggle Launch at Login and log out/in, Quit doesn't relaunch, launching a second copy exits.
 
 ### Release and install (in scope)

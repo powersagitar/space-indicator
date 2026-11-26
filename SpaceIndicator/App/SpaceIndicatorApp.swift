@@ -27,8 +27,9 @@ struct SpaceIndicatorApp: App {
             Button("Quit") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
         } label: {
-            Image(nsImage: TitleImage.make(model.title))
-                .accessibilityLabel(model.title)
+            // Plain text so the system styles it like its own menu bar text (weight, size, position).
+            // MenuBarExtra ignores font and frame modifiers, so the width follows the digits.
+            Text(model.title)
         }
         .menuBarExtraStyle(.menu)
     }
