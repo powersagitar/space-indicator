@@ -71,8 +71,8 @@ final class SpaceIndicatorModel {
         }
     }
 
-    /// Assigns only on change: @Observable notifies on every set, and the 1 s poll would
-    /// otherwise re-render the label every second.
+    /// The 1 s poll must not re-render the label when nothing changed. @Observable already
+    /// skips notifying when an equal value is assigned; the explicit guard states that intent.
     func refresh() {
         let new = SpaceNumbering.title(for: CGS.spaceNumbers())
         if new != title { title = new }
@@ -93,8 +93,8 @@ final class SpaceIndicatorModel {
         reloadLaunchAtLogin()
     }
 
-    /// Always assigns, like the old revision bump: the toggle must redraw even when a failed
-    /// install leaves the value unchanged, so its checkmark snaps back to the file's state.
+    /// Mirrors the file on disk. Observers are notified only when the value actually changes
+    /// (@Observable skips equal assignments), e.g. after a toggle or an outside edit.
     private func reloadLaunchAtLogin() {
         launchAtLogin = store.isInstalled()
     }

@@ -9,10 +9,11 @@ trap 'rm -rf "$tmp"' EXIT
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# Runs the script and asserts it kept $app and said it skipped it.
+# Runs the script and asserts $app is still there as type $2 (test -d or -L)
+# and that the script said it skipped it.
 expect_kept() {
   out=$(sh "$script")
-  [ -e "$app" ] || [ -L "$app" ] || fail "$1 removed"
+  test "$2" "$app" || fail "$1 removed"
   case "$out" in *skipped*) ;; *) fail "$1 no skipped message" ;; esac
 }
 
@@ -49,18 +50,17 @@ out=$(sh "$script")
 
 # (c) real directory is kept
 mkdir "$app"
-expect_kept "(c) directory"
-[ -d "$app" ] || fail "(c) not a directory"
+expect_kept "(c) directory" -d
 rmdir "$app"
 
 # (d) foreign symlink is kept
 ln -s "/somewhere/else/Space Indicator.app" "$app"
-expect_kept "(d) foreign symlink"
+expect_kept "(d) foreign symlink" -L
 rm "$app"
 
 # (e) lookalike symlink is kept
 ln -s "/elsewhere/space-indicator/Space Indicator.app" "$app"
-expect_kept "(e) lookalike symlink"
+expect_kept "(e) lookalike symlink" -L
 rm "$app"
 
 # (f) Cellar-style symlink is removed
