@@ -85,7 +85,7 @@ Correction (history): an earlier design numbered only the focused display's Spac
 - SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Image(nsImage:)` of the number string (see Font). The image's `accessibilityDescription` is the title, as well as the label's `.accessibilityLabel`, so VoiceOver reads the number.
 - Font: `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)`, drawn into a template `NSImage` (`TitleImage`) because the MenuBarExtra label ignores SwiftUI font modifiers — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
 - Menu (`MenuBarExtra` content):
-  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists); the model also re-invalidates it on `NSMenu.didBeginTrackingNotification` (confirmed by the owner).
+  - **Launch at Login** — `Toggle` bound to the model's stored `launchAtLogin` (checkmark iff the LaunchAgent plist exists), which the model re-reads from disk at launch, after every toggle (whether or not it succeeded) and on `NSMenu.didBeginTrackingNotification` (confirmed by the owner).
   - separator
   - **Quit** with key equivalent `q` (⌘Q) → `NSApp.terminate(nil)`.
 

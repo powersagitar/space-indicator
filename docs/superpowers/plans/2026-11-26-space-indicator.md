@@ -43,6 +43,7 @@ SpaceIndicator.xcodeproj/xcshareddata/xcschemes/SpaceIndicator.xcscheme   # shar
 SpaceIndicator/App/SpaceIndicatorApp.swift    # @main App: single-instance check, MenuBarExtra scene
 SpaceIndicator/App/SpaceIndicatorModel.swift  # title, observers, Launch at Login binding, launch-time self-repair
 SpaceIndicator/App/CGS.swift           # @_silgen_name private decls + live read
+SpaceIndicator/Core/AppIdentity.swift     # the bundle ID constant (simplify pass)
 SpaceIndicator/Core/SpaceNumbering.swift  # pure numbering + title
 SpaceIndicator/Core/LaunchAgent.swift     # pure path/plist + LaunchAgentStore file IO
 SpaceIndicator/Core/SingleInstance.swift  # wait briefly for a quitting instance (final fix wave)
@@ -115,7 +116,7 @@ Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [Strin
 
 - [ ] **Step 1: Write the failing tests** (`@Suite struct SpaceNumberingTests`; 11 tests originally, 14 after the final fix wave):
   - `singleDisplay`: spaces 10, 11, 12; current 11 → `[2]`.
-  - `mainSingleArrayOneNumber`: spaces 10, 11, 20 in one `Main` array; current 20 → `[3]`.
+  - `mainSingleArrayOneNumber`: spaces 10, 11, 20 in one `Main` array, with a two-UUID screen order that `Main` doesn't match; current 20 → `[3]`.
   - `fullScreenCountsByPosition`: 10 (type 0), 11 (type 0), 50 (type 4), 12 (type 0); current 50 → `[3]`; current 12 → `[4]`.
   - `eachDisplayHasItsOwnNumber`: display A [10, 11] current 10, display B [20, 21, 22] current 22 → `[1, 3]`.
   - `orderedByScreenOrderUnknownLast`: A [10, 11] current 11, B [20, 21] current 20, C [30, 31, 32] current 32; order `["B", "A"]` → `[1, 2, 3]`; order `["C"]` → `[3, 2, 1]`.
@@ -144,20 +145,21 @@ Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [Strin
 **Interfaces:**
 - Produces:
   - `enum LaunchAgent`
-    - `static let label = "com.mohandong.SpaceIndicator"`
-    - `static func stableAppPath(resolvedBundlePath: String) -> String`. It matches `^(.+)/Cellar/space-indicator/[^/]+/(.+)$` and returns `"$1/opt/space-indicator/$2"`; otherwise it returns the input unchanged.
-    - `static func isCellarPath(_ resolvedBundlePath: String) -> Bool`, true when that regex matches.
+    - `static let label = AppIdentity.bundleID` (`enum AppIdentity` in Core holds `static let bundleID = "com.mohandong.SpaceIndicator"`, also used by the single-instance check and the log subsystem)
+    - `static func stableAppPath(resolvedBundlePath: String) -> String`. It is `replacingOccurrences(of: "^(.+)/Cellar/space-indicator/[^/]+/(.+)$", with: "$1/opt/space-indicator/$2", options: .regularExpression)`, so a non-matching path comes back unchanged.
+    - `static func isCellarPath(_ resolvedBundlePath: String) -> Bool`, true when `stableAppPath` changes the path.
     - `static func executablePath(appPath: String) -> String` returns `appPath + "/Contents/MacOS/Space Indicator"`.
+    - `static func stableExecutablePath(resolvedBundlePath: String) -> String` is `executablePath(appPath: stableAppPath(...))`.
     - `static func plist(executablePath: String) -> [String: Any]` returns exactly the keys `Label`, `ProgramArguments` = `[executablePath]`, `RunAtLoad` = true, `KeepAlive` = false and `ProcessType` = `"Interactive"`.
   - `struct LaunchAgentStore`
-    - `init(directory: URL)`
+    - `let directory: URL`, set by the memberwise `init(directory:)`
     - `static var user: LaunchAgentStore`, with directory `~/Library/LaunchAgents` taken from `FileManager.default.homeDirectoryForCurrentUser`.
     - `var plistURL: URL` is `directory/com.mohandong.SpaceIndicator.plist`.
     - `func isInstalled() -> Bool` checks only that the file exists.
     - `func install(executablePath: String) throws` creates the directory and writes an XML plist via `PropertyListSerialization`, atomically.
     - `func uninstall() throws` is a no-op if the file is absent.
     - `func installedExecutablePath() -> String?` returns `ProgramArguments[0]`, or nil if the file is missing or unparseable.
-    - `@discardableResult func repairIfNeeded(resolvedBundlePath: String) throws -> Bool` returns true when it rewrote the file. It rewrites only if `isInstalled()`, `LaunchAgent.isCellarPath(resolvedBundlePath)`, and `installedExecutablePath() != executablePath(appPath: stableAppPath(...))`.
+    - `@discardableResult func repairIfNeeded(resolvedBundlePath: String) throws -> Bool` returns true when it rewrote the file. It rewrites only if `isInstalled()`, `LaunchAgent.isCellarPath(resolvedBundlePath)`, and `installedExecutablePath() != stableExecutablePath(resolvedBundlePath:)`.
 
 Tests use a fresh temp directory per test: `FileManager.default.temporaryDirectory/UUID`. Constants: `cellar = "/opt/homebrew/Cellar/space-indicator/0.1.0/Space Indicator.app"`, `opt = "/opt/homebrew/opt/space-indicator/Space Indicator.app"`.
 
@@ -175,7 +177,7 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 - [ ] **Step 2: Run, expect failure**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build -only-testing:SpaceIndicatorTests/LaunchAgentTests`
   Expected: build fails (`LaunchAgent` not found).
-- [ ] **Step 3: Implement `LaunchAgent` and `LaunchAgentStore`** per the interface above. The rewrite uses a `private static let` `NSRegularExpression`, built once (Swift's `Regex` isn't Sendable, so it can't be a Swift 6 `static let`).
+- [ ] **Step 3: Implement `LaunchAgent` and `LaunchAgentStore`** per the interface above. The rewrite is one `replacingOccurrences(options: .regularExpression)` call; it runs only at launch and on a toggle, so no compiled regex is cached.
 - [ ] **Step 4: Run all tests, expect pass**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
   Expected: `** TEST SUCCEEDED **`, 21 tests at this point (11 numbering + 10 LaunchAgent). Final suite: 30 tests in 4 suites (14 SpaceNumbering + 10 LaunchAgent + 3 TitleImage + 3 SingleInstance).
@@ -203,11 +205,11 @@ Behaviour to implement:
 - `refresh()` computes `SpaceNumbering.title(for: CGS.spaceNumbers())` and assigns it to `title` only when it differs from the current value.
 - Model init, as built: `refresh()`, then observers on queue `.main` with `MainActor.assumeIsolated`:
   - `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) → `refresh()`.
-  - `NSMenu.didBeginTrackingNotification` → re-invalidates the Launch at Login state only.
+  - `NSMenu.didBeginTrackingNotification` → re-reads the stored `launchAtLogin` from disk only.
   - `NSWorkspace.didActivateApplicationNotification` (workspace center) → focus restore only.
-  - A repeating `Timer` (1.0 s, tolerance 0.5 s) added to the main run loop in `.common` mode, held by the model, → `refresh()`.
+  - A repeating `Timer` (1.0 s, tolerance 0.5 s) added to the main run loop in `.common` mode, → `refresh()`. Neither the timer nor the observer tokens are stored: the run loop and the notification centers retain them for the app's lifetime.
   - Then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors (default, private, log privacy).
-- Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
+- Launch at Login: the model holds one `LaunchAgentStore.user` and a stored `private(set) var launchAtLogin`, set from `isInstalled()` in init, after every toggle and on menu tracking. The `Toggle` uses `Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) })`; `setLaunchAtLogin` installs `stableExecutablePath` or uninstalls, logging errors with `Logger(subsystem: AppIdentity.bundleID, category: "LaunchAgent")`, never showing UI, then re-reads the file.
 - Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus. The model observes `NSWorkspace.didActivateApplicationNotification` to restore focus to the previous app when this app is activated.
 - Why the timer (final fix wave, supersedes "no polling timer"): a diagnostic showed macOS posts no notification for Mission Control reordering or full-screen Space removal; the `Spaces` array just changes. The poll is the catch-all. It also covers display plug/unplug and app quits with up to about 1.5 s latency, so the earlier screen-parameters and app-termination observers were removed, and the activation and menu-tracking observers no longer refresh. `activeSpaceDidChangeNotification` stays only for instant feedback on a Space switch. The timer's closure is `[weak self]` + `MainActor.assumeIsolated { self?.refresh() }`. Assigning only on change keeps @Observable from re-rendering the label every second.
 
