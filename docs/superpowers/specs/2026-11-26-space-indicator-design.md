@@ -120,7 +120,7 @@ Failure to write/delete: show nothing (no windows); log via `os.Logger`; the che
 In the existing tap `powersagitar/homebrew-tap`, file `Formula/space-indicator.rb` (class `SpaceIndicator`), styled like the existing `how-to.rb` (desc, homepage, url, sha256, `license "GPL-3.0-only"`).
 
 - Source: GitHub tag tarball of `github.com/powersagitar/space-indicator` (already the repo's `origin`). Tags are `vX.Y.Z`, first release `v0.1.0`. No bottle — builds from source. *(Tag format is the designer's call.)*
-- `depends_on xcode: :build`, `depends_on arch: :arm64`, and a macOS 27 minimum (use Homebrew's symbol for macOS 27 if it exists, else check `MacOS.version` in `install` and `odie`).
+- `depends_on xcode: ["27.0", :build]`, `depends_on arch: :arm64`, and a macOS 27 minimum (use Homebrew's symbol for macOS 27 if it exists, else check `MacOS.version` in `install` and `odie`).
 - `install`: `xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- MARKETING_VERSION=#{version} build`, then `prefix.install "build/Build/Products/Release/Space Indicator.app"`.
 - **Early checks in `install`** (before `xcodebuild`): `odie` with the exact fix command if the active developer directory isn't a full Xcode (`xcode-select -p` ends in `CommandLineTools`), if the license isn't accepted (`xcodebuild -license check`), or if first-launch components are missing (`xcodebuild -checkFirstLaunchStatus`). Caveats print only after a successful install (and in `brew info`), so these checks are what a fresh machine actually hits. *(Designer's call, added alongside the caveats requested.)*
 - `caveats` — two parts:

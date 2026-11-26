@@ -10,11 +10,9 @@ struct SpaceIndicatorApp: App {
             NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
                 .contains { $0.processIdentifier != getpid() && !$0.isTerminated }
         }
-        // Spin the run loop between polls so terminated instances are noticed.
-        if SingleInstance.anotherInstanceRemains(
-            wait: { RunLoop.current.run(until: Date(timeIntervalSinceNow: $0)) },
-            othersRunning: othersRunning)
-        {
+        // Default wait is Thread.sleep: the main run loop has no sources before NSApplication.run,
+        // so RunLoop.run(until:) would return at once. Each poll re-queries the running apps.
+        if SingleInstance.anotherInstanceRemains(othersRunning: othersRunning) {
             exit(0)
         }
         NSApplication.shared.setActivationPolicy(.accessory)
