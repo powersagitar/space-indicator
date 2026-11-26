@@ -11,7 +11,7 @@ struct SpaceIndicatorApp: App {
         {
             exit(0)
         }
-        NSApp.setActivationPolicy(.accessory)
+        NSApplication.shared.setActivationPolicy(.accessory)
         _model = State(initialValue: SpaceIndicatorModel())
     }
 
