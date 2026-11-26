@@ -22,6 +22,9 @@ final class SpaceIndicatorModel {
 
     init() {
         refresh()
+        // The poll below is the catch-all: macOS posts no notification when Mission Control
+        // reorders Spaces or a full-screen Space disappears, and it also covers display changes.
+        // This observer only makes the common case, a Space switch, update instantly.
         observers.append(
             NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
@@ -30,32 +33,12 @@ final class SpaceIndicatorModel {
             })
         observers.append(
             NotificationCenter.default.addObserver(
-                forName: NSApplication.didChangeScreenParametersNotification, object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refresh() }
-            })
-        observers.append(
-            NotificationCenter.default.addObserver(
                 forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.loginRevision += 1
-                    self?.refresh()
-                }
+                MainActor.assumeIsolated { self?.loginRevision += 1 }
             })
-        // A Space's position can change without a Space switch (reordering in Mission Control,
-        // or an app quitting removes its full-screen Space). These triggers give an instant
-        // response where they fire; the poll below covers the cases with no notification.
-        observers.append(
-            NSWorkspace.shared.notificationCenter.addObserver(
-                forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refresh() }
-            })
-        // macOS posts no notification when Mission Control reorders Spaces or a full-screen
-        // Space disappears, so poll one WindowServer query every second. `.common` mode keeps
-        // it firing while the menu is open; refresh() only assigns when the title changes.
+        // Poll one WindowServer query every second. `.common` mode keeps it firing while the
+        // menu is open; refresh() only assigns when the title changes.
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
@@ -70,10 +53,7 @@ final class SpaceIndicatorModel {
                 forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
             ) { [weak self] note in
                 let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                MainActor.assumeIsolated {
-                    self?.refresh()
-                    self?.frontmostChanged(to: app)
-                }
+                MainActor.assumeIsolated { self?.frontmostChanged(to: app) }
             })
         do {
             _ = try LaunchAgentStore.user.repairIfNeeded(

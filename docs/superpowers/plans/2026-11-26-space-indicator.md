@@ -203,16 +203,13 @@ Behaviour to implement:
 - `refresh()` computes `SpaceNumbering.title(for: CGS.spaceNumbers())` and assigns it to `title` only when it differs from the current value.
 - Model init, as built: `refresh()`, then observers on queue `.main` with `MainActor.assumeIsolated`:
   - `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) → `refresh()`.
-  - `NSApplication.didChangeScreenParametersNotification` → `refresh()`.
-  - `NSMenu.didBeginTrackingNotification` → re-invalidates the Launch at Login state and calls `refresh()`.
-  - `NSWorkspace.didTerminateApplicationNotification` (workspace center) → `refresh()`.
-  - `NSWorkspace.didActivateApplicationNotification` (workspace center) → `refresh()` and focus restore.
+  - `NSMenu.didBeginTrackingNotification` → re-invalidates the Launch at Login state only.
+  - `NSWorkspace.didActivateApplicationNotification` (workspace center) → focus restore only.
   - A repeating `Timer` (1.0 s, tolerance 0.5 s) added to the main run loop in `.common` mode, held by the model, → `refresh()`.
   - Then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors (default, private, log privacy).
 - Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
 - Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus. The model observes `NSWorkspace.didActivateApplicationNotification` to restore focus to the previous app when this app is activated.
-- Why the extra triggers (final fix wave): `refresh()` also runs on `didActivateApplicationNotification`, `NSWorkspace.didTerminateApplicationNotification` and `NSMenu.didBeginTrackingNotification`, because a Space's position can change without a Space switch (reordering in Mission Control, quitting a full-screen app before the current Space).
-- Why the timer (final fix wave, supersedes "no polling timer"): a diagnostic showed macOS posts no notification for Mission Control reordering or full-screen Space removal; the `Spaces` array just changes. The timer's closure is `[weak self]` + `MainActor.assumeIsolated { self?.refresh() }`. Assigning only on change keeps @Observable from re-rendering the label every second. The notification triggers stay for instant response.
+- Why the timer (final fix wave, supersedes "no polling timer"): a diagnostic showed macOS posts no notification for Mission Control reordering or full-screen Space removal; the `Spaces` array just changes. The poll is the catch-all. It also covers display plug/unplug and app quits with up to about 1.5 s latency, so the earlier screen-parameters and app-termination observers were removed, and the activation and menu-tracking observers no longer refresh. `activeSpaceDidChangeNotification` stays only for instant feedback on a Space switch. The timer's closure is `[weak self]` + `MainActor.assumeIsolated { self?.refresh() }`. Assigning only on change keeps @Observable from re-rendering the label every second.
 
 - [ ] **Step 1: Write the `TitleImageTests`, then implement the files above.**
 - [ ] **Step 2: Build and run tests**
