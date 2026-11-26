@@ -4,7 +4,7 @@
 
 **Goal:** A macOS menu bar app showing each display's current Space 1-based number, with a Launch at Login / Quit menu, installed from source via `brew install powersagitar/tap/space-indicator`.
 
-**Architecture:** One Xcode project. Pure logic (Space numbering, LaunchAgent paths and plist IO) lives in `SpaceIndicator/Core/` and is compiled into both the app target and a host-less unit test target, so tests never launch the app. SwiftUI wiring (`MenuBarExtra`, notifications, private CGS calls) lives in `SpaceIndicator/App/`. A Homebrew formula in the existing tap builds the project with `xcodebuild` and installs a cleanup script.
+**Architecture:** One Xcode project. Pure logic (Space numbering, LaunchAgent paths and plist IO, the title image, the single-instance wait) lives in `SpaceIndicator/Core/` and is compiled into both the app target and a host-less unit test target, so tests never launch the app. SwiftUI wiring (`MenuBarExtra`, notifications, private CGS calls) lives in `SpaceIndicator/App/`. A Homebrew formula in the existing tap builds the project with `xcodebuild` and installs a cleanup script.
 
 **Tech Stack:** Swift 6, SwiftUI (`MenuBarExtra`), Swift Testing, Xcode 27.2, Homebrew formula (Ruby), POSIX `sh`.
 
@@ -113,7 +113,7 @@ Rules:
 
 Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [String: Any]` and `func display(_ spaces: [[String: Any]], current: Any? = nil, id: String = "Main") -> [String: Any]` (sets `"Display Identifier": id` and, when `current` is non-nil, `"Current Space": ["ManagedSpaceID": current]`). The suite's `numbers(_:order:)` calls `SpaceNumbering.numbers(displays:screenOrder:)` with `order` defaulting to `[]`.
 
-- [ ] **Step 1: Write the failing tests** (`@Suite struct SpaceNumberingTests`, 11 tests):
+- [ ] **Step 1: Write the failing tests** (`@Suite struct SpaceNumberingTests`; 11 tests originally, 14 after the final fix wave):
   - `singleDisplay`: spaces 10, 11, 12; current 11 → `[2]`.
   - `mainSingleArrayOneNumber`: spaces 10, 11, 20 in one `Main` array; current 20 → `[3]`.
   - `fullScreenCountsByPosition`: 10 (type 0), 11 (type 0), 50 (type 4), 12 (type 0); current 50 → `[3]`; current 12 → `[4]`.
@@ -130,7 +130,7 @@ Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [Strin
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build -only-testing:SpaceIndicatorTests/SpaceNumberingTests`
   Expected: build fails (`numbers`/`title` not found).
 - [ ] **Step 3: Implement `SpaceNumbering.numbers` and `title`** per the rules above.
-- [ ] **Step 4: Run, expect pass** (same command): `** TEST SUCCEEDED **`, 11 tests.
+- [ ] **Step 4: Run, expect pass** (same command): `** TEST SUCCEEDED **`, 11 tests (14 after the final fix wave).
 - [ ] **Step 5: Commit** — `git commit -am "Add Space numbering"` (add new files first if any).
 
 ---
@@ -169,16 +169,16 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
   - `installCreatesMissingDirectory`: the store's directory is `tmp/LaunchAgents`, which doesn't exist. After `install`, `isInstalled()` is true, `installedExecutablePath()` equals the path, and the file starts with `<?xml`.
   - `uninstallRemovesAndIsIdempotent`: install, uninstall, then `isInstalled() == false`. A second uninstall doesn't throw.
   - `repairRewritesStaleCellarPath`: install `"/old/path"`. Then `repairIfNeeded(cellar)` returns true and the installed path is `opt + "/Contents/MacOS/Space Indicator"`. A second call returns false.
-  - `repairOverwritesCorruptPlist`: write `"garbage"` to `plistURL`. `isInstalled()` is true and `repairIfNeeded(cellar)` returns true, after which `installedExecutablePath()` is non-nil.
+  - `repairOverwritesCorruptPlist`: write `"garbage"` to `plistURL`. `isInstalled()` is true and `repairIfNeeded(cellar)` returns true, after which `installedExecutablePath()` is `opt + "/Contents/MacOS/Space Indicator"`.
   - `repairSkipsNonCellarBuild`: install `"/old/path"`. `repairIfNeeded(<DerivedData path>)` returns false and the path is still `"/old/path"`.
   - `repairSkipsWhenNotInstalled`: `repairIfNeeded(cellar)` returns false and no file is created.
 - [ ] **Step 2: Run, expect failure**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build -only-testing:SpaceIndicatorTests/LaunchAgentTests`
   Expected: build fails (`LaunchAgent` not found).
-- [ ] **Step 3: Implement `LaunchAgent` and `LaunchAgentStore`** per the interface above, using `NSRegularExpression` or a Swift `Regex` for the rewrite.
+- [ ] **Step 3: Implement `LaunchAgent` and `LaunchAgentStore`** per the interface above. The rewrite uses a `private static let` `NSRegularExpression`, built once (Swift's `Regex` isn't Sendable, so it can't be a Swift 6 `static let`).
 - [ ] **Step 4: Run all tests, expect pass**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
-  Expected: `** TEST SUCCEEDED **`, 21 tests (11 numbering + 10 LaunchAgent; `TitleImageTests` adds 2 more in Task 4, for 23).
+  Expected: `** TEST SUCCEEDED **`, 21 tests at this point (11 numbering + 10 LaunchAgent). Final suite: 30 tests in 4 suites (14 SpaceNumbering + 10 LaunchAgent + 3 TitleImage + 3 SingleInstance).
 - [ ] **Step 5: Commit** — `git add -A && git commit -m "Add LaunchAgent path logic and store"`
 
 ---
@@ -186,8 +186,8 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 ### Task 4: App wiring (CGS, menu bar extra, triggers, single instance)
 
 **Files:**
-- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`, `SpaceIndicator/Core/TitleImage.swift`
-- Test: `SpaceIndicatorTests/TitleImageTests.swift` (`"1"` and `"8"` give equal widths; `"?"` gives a template image)
+- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`, `SpaceIndicator/Core/TitleImage.swift`, and (final fix wave) `SpaceIndicator/Core/SingleInstance.swift`
+- Test: `SpaceIndicatorTests/TitleImageTests.swift` (3 tests: `"1"` and `"8"` give equal widths; `"?"` gives a template image; the image's `accessibilityDescription` is the title) and (final fix wave) `SpaceIndicatorTests/SingleInstanceTests.swift` (3 tests: no other instance means no wait; an instance that exits during the wait is ignored; one still running after at most 1 s of waits means exit)
 - Delete: `SpaceIndicator/App/main.swift`
 
 **Interfaces:**
@@ -200,16 +200,24 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 Behaviour to implement:
 - `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator` (ignoring `isTerminated` ones, after waiting up to 1 s via `SingleInstance.anotherInstanceRemains` for it to exit — final fix wave), call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
 - Label: `Image(nsImage: TitleImage.make(model.title))` with `.accessibilityLabel(model.title)`; `TitleImage` also sets the image's `accessibilityDescription` to the title (MenuBarExtra ignores font modifiers; `TitleImage` in Core draws the tabular-digit font into a template image). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
-- Model init: `refresh()` (title = `SpaceNumbering.title(for: CGS.spaceNumbers())`), observers for `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) and `NSApplication.didChangeScreenParametersNotification` (both call `refresh()`), an observer for `NSMenu.didBeginTrackingNotification` that re-invalidates the Launch at Login state, then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors.
+- `refresh()` computes `SpaceNumbering.title(for: CGS.spaceNumbers())` and assigns it to `title` only when it differs from the current value.
+- Model init, as built: `refresh()`, then observers on queue `.main` with `MainActor.assumeIsolated`:
+  - `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) → `refresh()`.
+  - `NSApplication.didChangeScreenParametersNotification` → `refresh()`.
+  - `NSMenu.didBeginTrackingNotification` → re-invalidates the Launch at Login state and calls `refresh()`.
+  - `NSWorkspace.didTerminateApplicationNotification` (workspace center) → `refresh()`.
+  - `NSWorkspace.didActivateApplicationNotification` (workspace center) → `refresh()` and focus restore.
+  - A repeating `Timer` (1.0 s, tolerance 0.5 s) added to the main run loop in `.common` mode, held by the model, → `refresh()`.
+  - Then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors (default, private, log privacy).
 - Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
 - Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus. The model observes `NSWorkspace.didActivateApplicationNotification` to restore focus to the previous app when this app is activated.
-- Final fix wave: `refresh()` also runs on `didActivateApplicationNotification`, `NSWorkspace.didTerminateApplicationNotification` and `NSMenu.didBeginTrackingNotification`, because a Space's position can change without a Space switch (reordering in Mission Control, quitting a full-screen app before the current Space).
-- Final fix wave, follow-up (supersedes "no polling timer"): a diagnostic showed macOS posts no notification for Mission Control reordering or full-screen Space removal; the `Spaces` array just changes. So the model also holds a repeating `Timer` (1.0 s, tolerance 0.5 s, main run loop, `.common` mode; closure `[weak self]` + `MainActor.assumeIsolated { self?.refresh() }`), and `refresh()` assigns `title` only when it differs, so @Observable doesn't re-render the label every second. The notification triggers stay for instant response.
+- Why the extra triggers (final fix wave): `refresh()` also runs on `didActivateApplicationNotification`, `NSWorkspace.didTerminateApplicationNotification` and `NSMenu.didBeginTrackingNotification`, because a Space's position can change without a Space switch (reordering in Mission Control, quitting a full-screen app before the current Space).
+- Why the timer (final fix wave, supersedes "no polling timer"): a diagnostic showed macOS posts no notification for Mission Control reordering or full-screen Space removal; the `Spaces` array just changes. The timer's closure is `[weak self]` + `MainActor.assumeIsolated { self?.refresh() }`. Assigning only on change keeps @Observable from re-rendering the label every second. The notification triggers stay for instant response.
 
 - [ ] **Step 1: Write the `TitleImageTests`, then implement the files above.**
 - [ ] **Step 2: Build and run tests**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
-  Expected: `** TEST SUCCEEDED **`, 23 tests, with no warnings in App/ or Core/ files about Sendable or MainActor isolation.
+  Expected: `** TEST SUCCEEDED **`, 23 tests at this point (30 in 4 suites after the final fix wave), with no warnings in App/ or Core/ files about Sendable or MainActor isolation.
 - [ ] **Step 3: Manual check, single display.** Run `open "build/Build/Products/Debug/Space Indicator.app"` and check:
   - A number appears, there's no Dock icon, and no permission prompt appears.
   - Switching Spaces with Ctrl-←/→ updates the number.

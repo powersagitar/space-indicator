@@ -153,7 +153,7 @@ It doesn't run `brew uninstall` itself; the caveats say to run it first, then `b
 
 ### Testing
 
-- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, float or Bool IDs → `?`, malformed input → skipped or `?`, title joining); single-instance wait (a quitting instance that exits within the wait is ignored); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
+- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing or repeated → `?`, float or Bool IDs → `?`, malformed input → skipped or `?`, title joining); title image (equal digit widths, template image, accessibility description is the title); single-instance wait (a quitting instance that exits within the wait is ignored); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
 - Manual check on the real machine: switching Spaces, full-screen app, plug/unplug a display, toggle Launch at Login and log out/in, Quit doesn't relaunch, launching a second copy exits.
 
 ### Release and install (in scope)
