@@ -7,7 +7,7 @@ Personal macOS 27+ (arm64 only) menu bar app showing each display's current Spac
 ## Commands
 
 ```sh
-# Build (same flags the formula uses; formula also passes MARKETING_VERSION and
+# Build (same flags the formula uses; formula also passes
 # "OTHER_SWIFT_FLAGS=$(inherited) -disable-sandbox" for Homebrew's sandbox)
 xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- build
 
