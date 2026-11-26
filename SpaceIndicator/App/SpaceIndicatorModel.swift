@@ -6,15 +6,14 @@ import OSLog
 @Observable
 final class SpaceIndicatorModel {
     private(set) var title = SpaceNumbering.title(for: [])
-    /// Bumped after every toggle and when a menu starts tracking, to invalidate views reading `launchAtLogin`.
-    private var loginRevision = 0
+    /// Whether the LaunchAgent plist exists. Re-read from disk at launch, after every toggle,
+    /// and when a menu starts tracking, so a change made outside the app shows on the next open.
+    private(set) var launchAtLogin = false
 
     @ObservationIgnored private var previousApp: NSRunningApplication?
-    @ObservationIgnored private var observers: [NSObjectProtocol] = []
-    /// Lives as long as the model, i.e. the app.
-    @ObservationIgnored private var pollTimer: Timer?
+    @ObservationIgnored private let store = LaunchAgentStore.user
     @ObservationIgnored private let logger = Logger(
-        subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")
+        subsystem: AppIdentity.bundleID, category: "LaunchAgent")
 
     private static var resolvedBundlePath: String {
         Bundle.main.bundleURL.resolvingSymlinksInPath().path
@@ -22,21 +21,22 @@ final class SpaceIndicatorModel {
 
     init() {
         refresh()
+        reloadLaunchAtLogin()
         // The poll below is the catch-all: macOS posts no notification when Mission Control
         // reorders Spaces or a full-screen Space disappears, and it also covers display changes.
         // This observer only makes the common case, a Space switch, update instantly.
-        observers.append(
-            NSWorkspace.shared.notificationCenter.addObserver(
-                forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refresh() }
-            })
-        observers.append(
-            NotificationCenter.default.addObserver(
-                forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.loginRevision += 1 }
-            })
+        // Block observers and the timer are retained by their center and run loop for the
+        // app's lifetime, so none of them is stored.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadLaunchAtLogin() }
+        }
         // Poll one WindowServer query every second. `.common` mode keeps it firing while the
         // menu is open; refresh() only assigns when the title changes.
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -44,20 +44,17 @@ final class SpaceIndicatorModel {
         }
         timer.tolerance = 0.5
         RunLoop.main.add(timer, forMode: .common)
-        pollTimer = timer
         // A menu bar app has no windows to focus, but `open` on a running copy activates it
         // and steals focus. Remember the last other frontmost app and give focus back.
         previousApp = NSWorkspace.shared.frontmostApplication
-        observers.append(
-            NSWorkspace.shared.notificationCenter.addObserver(
-                forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-            ) { [weak self] note in
-                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                MainActor.assumeIsolated { self?.frontmostChanged(to: app) }
-            })
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated { self?.frontmostChanged(to: app) }
+        }
         do {
-            _ = try LaunchAgentStore.user.repairIfNeeded(
-                resolvedBundlePath: Self.resolvedBundlePath)
+            try store.repairIfNeeded(resolvedBundlePath: Self.resolvedBundlePath)
         } catch {
             logger.error("Repair failed: \(error.localizedDescription)")
         }
@@ -81,25 +78,24 @@ final class SpaceIndicatorModel {
         if new != title { title = new }
     }
 
-    /// Reads the LaunchAgent file on each evaluation; `loginRevision` is what triggers re-evaluation.
-    var launchAtLogin: Bool {
-        get {
-            _ = loginRevision
-            return LaunchAgentStore.user.isInstalled()
-        }
-        set {
-            let store = LaunchAgentStore.user
-            do {
-                if newValue {
-                    let app = LaunchAgent.stableAppPath(resolvedBundlePath: Self.resolvedBundlePath)
-                    try store.install(executablePath: LaunchAgent.executablePath(appPath: app))
-                } else {
-                    try store.uninstall()
-                }
-            } catch {
-                logger.error("Toggle failed: \(error.localizedDescription)")
+    /// Installs or removes the LaunchAgent, then re-reads the file whether or not that worked.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try store.install(executablePath: LaunchAgent.stableExecutablePath(
+                    resolvedBundlePath: Self.resolvedBundlePath))
+            } else {
+                try store.uninstall()
             }
-            loginRevision += 1
+        } catch {
+            logger.error("Toggle failed: \(error.localizedDescription)")
         }
+        reloadLaunchAtLogin()
+    }
+
+    /// Always assigns, like the old revision bump: the toggle must redraw even when a failed
+    /// install leaves the value unchanged, so its checkmark snaps back to the file's state.
+    private func reloadLaunchAtLogin() {
+        launchAtLogin = store.isInstalled()
     }
 }

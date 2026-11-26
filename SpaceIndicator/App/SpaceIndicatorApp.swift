@@ -5,9 +5,8 @@ struct SpaceIndicatorApp: App {
     @State private var model: SpaceIndicatorModel
 
     init() {
-        let bundleID = "com.mohandong.SpaceIndicator"
         let othersRunning = {
-            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            NSRunningApplication.runningApplications(withBundleIdentifier: AppIdentity.bundleID)
                 .contains { $0.processIdentifier != getpid() && !$0.isTerminated }
         }
         // Default wait is Thread.sleep: the main run loop has no sources before NSApplication.run,
@@ -21,8 +20,9 @@ struct SpaceIndicatorApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            @Bindable var model = model
-            Toggle("Launch at Login", isOn: $model.launchAtLogin)
+            Toggle("Launch at Login", isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }))
             Divider()
             Button("Quit") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
