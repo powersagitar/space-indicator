@@ -3,6 +3,9 @@ import AppKit
 @_silgen_name("CGSMainConnectionID")
 private func CGSMainConnectionID() -> Int32
 
+// "Copy" returns +1. Swift treats an @_silgen_name function's object return as owned (+1)
+// and releases it, which matches here. Don't reuse this pattern for +0 "Get" functions:
+// Swift would over-release their result.
 @_silgen_name("CGSCopyManagedDisplaySpaces")
 private func CGSCopyManagedDisplaySpaces(_ cid: Int32) -> CFArray?
 

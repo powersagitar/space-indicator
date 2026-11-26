@@ -3,18 +3,27 @@ import Foundation
 enum LaunchAgent {
     static let label = "com.mohandong.SpaceIndicator"
 
-    private static var cellarPattern: Regex<(Substring, Substring, Substring)> { /^(.+)\/Cellar\/space-indicator\/[^\/]+\/(.+)$/ }
+    /// Built once. NSRegularExpression is Sendable, unlike Swift's `Regex`, so it can be a `static let`.
+    private static let cellarPattern = try! NSRegularExpression(
+        pattern: "^(.+)/Cellar/space-indicator/[^/]+/(.+)$")
+
+    /// The (prefix, rest) around `/Cellar/space-indicator/<version>/`, or nil.
+    private static func cellarParts(_ path: String) -> (prefix: String, rest: String)? {
+        let ns = path as NSString
+        guard let match = cellarPattern.firstMatch(
+            in: path, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        return (ns.substring(with: match.range(at: 1)), ns.substring(with: match.range(at: 2)))
+    }
 
     /// Rewrites a Homebrew Cellar path to the stable `opt` path so the agent survives upgrades.
     static func stableAppPath(resolvedBundlePath: String) -> String {
-        guard let match = resolvedBundlePath.wholeMatch(of: cellarPattern) else {
-            return resolvedBundlePath
-        }
-        return "\(match.1)/opt/space-indicator/\(match.2)"
+        guard let parts = cellarParts(resolvedBundlePath) else { return resolvedBundlePath }
+        return "\(parts.prefix)/opt/space-indicator/\(parts.rest)"
     }
 
     static func isCellarPath(_ resolvedBundlePath: String) -> Bool {
-        resolvedBundlePath.wholeMatch(of: cellarPattern) != nil
+        cellarParts(resolvedBundlePath) != nil
     }
 
     static func executablePath(appPath: String) -> String {

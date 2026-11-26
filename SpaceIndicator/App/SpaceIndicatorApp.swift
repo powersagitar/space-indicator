@@ -6,8 +6,14 @@ struct SpaceIndicatorApp: App {
 
     init() {
         let bundleID = "com.mohandong.SpaceIndicator"
-        if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            .contains(where: { $0.processIdentifier != getpid() })
+        let othersRunning = {
+            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+                .contains { $0.processIdentifier != getpid() && !$0.isTerminated }
+        }
+        // Spin the run loop between polls so terminated instances are noticed.
+        if SingleInstance.anotherInstanceRemains(
+            wait: { RunLoop.current.run(until: Date(timeIntervalSinceNow: $0)) },
+            othersRunning: othersRunning)
         {
             exit(0)
         }

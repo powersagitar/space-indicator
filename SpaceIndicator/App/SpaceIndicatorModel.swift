@@ -37,7 +37,19 @@ final class SpaceIndicatorModel {
             NotificationCenter.default.addObserver(
                 forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.loginRevision += 1 }
+                MainActor.assumeIsolated {
+                    self?.loginRevision += 1
+                    self?.refresh()
+                }
+            })
+        // A Space's position can change without a Space switch (reordering in Mission Control,
+        // or an app quitting removes its full-screen Space), so also refresh on app activation,
+        // app termination and menu open. No polling.
+        observers.append(
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
             })
         // A menu bar app has no windows to focus, but `open` on a running copy activates it
         // and steals focus. Remember the last other frontmost app and give focus back.
@@ -47,16 +59,21 @@ final class SpaceIndicatorModel {
                 forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
             ) { [weak self] note in
                 let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                MainActor.assumeIsolated { self?.frontmostChanged(to: app) }
+                MainActor.assumeIsolated {
+                    self?.refresh()
+                    self?.frontmostChanged(to: app)
+                }
             })
         do {
             _ = try LaunchAgentStore.user.repairIfNeeded(
                 resolvedBundlePath: Self.resolvedBundlePath)
         } catch {
-            logger.error("Repair failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Repair failed: \(error.localizedDescription)")
         }
     }
 
+    /// Always hands focus back when this app is activated. Fine while the app has no windows
+    /// or alerts (by design); any added later would have focus taken away from them by this.
     private func frontmostChanged(to app: NSRunningApplication?) {
         guard let app else { return }
         if app.processIdentifier == getpid() {
@@ -86,7 +103,7 @@ final class SpaceIndicatorModel {
                     try store.uninstall()
                 }
             } catch {
-                logger.error("Toggle failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("Toggle failed: \(error.localizedDescription)")
             }
             loginRevision += 1
         }
