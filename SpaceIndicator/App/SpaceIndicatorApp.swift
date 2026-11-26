@@ -25,5 +25,6 @@ struct SpaceIndicatorApp: App {
         } label: {
             Text(model.title).monospacedDigit()
         }
+        .menuBarExtraStyle(.menu)
     }
 }

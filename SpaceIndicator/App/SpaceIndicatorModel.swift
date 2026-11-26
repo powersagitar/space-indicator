@@ -6,7 +6,7 @@ import OSLog
 @Observable
 final class SpaceIndicatorModel {
     private(set) var title = SpaceNumbering.title(for: nil)
-    /// Bumped after every toggle so views re-read the file-backed state.
+    /// Bumped after every toggle and when a menu starts tracking, to invalidate views reading `launchAtLogin`.
     private var loginRevision = 0
 
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -32,6 +32,12 @@ final class SpaceIndicatorModel {
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refresh() }
             })
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.loginRevision += 1 }
+            })
         do {
             _ = try LaunchAgentStore.user.repairIfNeeded(
                 resolvedBundlePath: Self.resolvedBundlePath)
@@ -44,7 +50,7 @@ final class SpaceIndicatorModel {
         title = SpaceNumbering.title(for: CGS.activeSpaceNumber())
     }
 
-    /// Reads the real file every time; `loginRevision` keeps the read tracked.
+    /// Reads the LaunchAgent file on each evaluation; `loginRevision` is what triggers re-evaluation.
     var launchAtLogin: Bool {
         get {
             _ = loginRevision

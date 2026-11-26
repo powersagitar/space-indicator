@@ -69,7 +69,7 @@ The parsing/numbering is a pure function over the CGS array (`[[String: Any]]` +
 
 ### Single instance
 
-At launch, if another running application has bundle ID `com.mohandong.SpaceIndicator` (`NSRunningApplication.runningApplications(withBundleIdentifier:)`, excluding the current process), exit immediately. Prevents two status items when the LaunchAgent copy and an `open`-launched copy overlap. *(Designer's call.)*
+At launch, if another running application has bundle ID `com.mohandong.SpaceIndicator` (`NSRunningApplication.runningApplications(withBundleIdentifier:)`, excluding the current process), exit immediately. Prevents two menu bar items when the LaunchAgent copy and an `open`-launched copy overlap. *(Designer's call.)*
 
 ### Update triggers
 
@@ -80,9 +80,9 @@ Builder must verify on a multi-display setup that moving focus between displays 
 ### Menu bar item
 
 - SwiftUI `MenuBarExtra` (`.menu` style) whose label is `Text(number string)` with monospaced digits.
-- Font: `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)` — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
-- Menu (assigned to `statusItem.menu`):
-  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists).
+- Font: system font with `.monospacedDigit()` — SF Pro with tabular digits so width doesn't jitter between e.g. 1 and 8. *(Designer's call; spec said "SF Pro".)*
+- Menu (`MenuBarExtra` content):
+  - **Launch at Login** — `Toggle` whose binding reads the LaunchAgent plist's existence on every read (checkmark iff it exists); the model also re-invalidates it on `NSMenu.didBeginTrackingNotification`.
   - separator
   - **Quit** with key equivalent `q` (⌘Q) → `NSApp.terminate(nil)`.
 

@@ -40,7 +40,7 @@
 ```
 SpaceIndicator.xcodeproj/project.pbxproj                    # hand-written, objectVersion 77, synchronized folders
 SpaceIndicator.xcodeproj/xcshareddata/xcschemes/SpaceIndicator.xcscheme   # shared scheme: build app, test SpaceIndicatorTests
-SpaceIndicator/App/main.swift          # entry: single-instance check, NSApplication setup, run loop
+SpaceIndicator/App/SpaceIndicatorApp.swift  # @main App: single-instance check, MenuBarExtra scene
 SpaceIndicator/App/SpaceIndicatorApp.swift + SpaceIndicatorModel.swift   # MenuBarExtra, observers, launch-time self-repair
 SpaceIndicator/App/CGS.swift           # @_silgen_name private decls + live read
 SpaceIndicator/Core/SpaceNumbering.swift  # pure numbering + title
@@ -58,7 +58,7 @@ scripts/test-cleanup.sh                # sandboxed test of the cleanup script
 
 **Files:**
 - Create: `SpaceIndicator.xcodeproj/project.pbxproj`, `SpaceIndicator.xcodeproj/xcshareddata/xcschemes/SpaceIndicator.xcscheme`
-- Create: `SpaceIndicator/App/main.swift` (temporary: `import AppKit; NSApplication.shared.run()` is fine), `SpaceIndicator/Core/SpaceNumbering.swift` (temporary placeholder `enum SpaceNumbering {}`)
+- Create: `SpaceIndicator/App/main.swift` (temporary placeholder, deleted in Task 4), `SpaceIndicator/Core/SpaceNumbering.swift` (temporary placeholder `enum SpaceNumbering {}`)
 - Test: `SpaceIndicatorTests/SpaceNumberingTests.swift` (one placeholder `@Test func placeholder() { #expect(Bool(true)) }`)
 
 **Interfaces:**
@@ -175,40 +175,25 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 
 ---
 
-### Task 4: App wiring (CGS, status item, menu, triggers, single instance)
+### Task 4: App wiring (CGS, menu bar extra, triggers, single instance)
 
 **Files:**
-- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/AppDelegate.swift`
-- Modify: `SpaceIndicator/App/main.swift`
+- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`
+- Delete: `SpaceIndicator/App/main.swift`
 
 **Interfaces:**
 - Consumes: `SpaceNumbering.number(activeSpaceID:displays:)`, `SpaceNumbering.title(for:)`, `LaunchAgent.stableAppPath/executablePath`, `LaunchAgentStore.user` and its methods.
 - Produces:
-  - `enum CGS`
-    - `static func activeSpaceNumber() -> Int?` reads `CGSGetActiveSpace` and `CGSCopyManagedDisplaySpaces`, casts the result to `[[String: Any]]` (nil if the cast fails) and passes it to `SpaceNumbering.number`.
-  - Private declarations, at file scope:
-    - `@_silgen_name("CGSMainConnectionID") func CGSMainConnectionID() -> Int32`
-    - `@_silgen_name("CGSGetActiveSpace") func CGSGetActiveSpace(_ cid: Int32) -> UInt64`
-    - `@_silgen_name("CGSCopyManagedDisplaySpaces") func CGSCopyManagedDisplaySpaces(_ cid: Int32) -> CFArray?`
-  - `@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate`
+  - `enum CGS` with `static func activeSpaceNumber() -> Int?` (private `@_silgen_name` declarations of `CGSMainConnectionID`, `CGSGetActiveSpace`, `CGSCopyManagedDisplaySpaces` at file scope; casts the result to `[[String: Any]]`, nil if the cast fails).
+  - `@main struct SpaceIndicatorApp: App` with a `MenuBarExtra` scene, `.menuBarExtraStyle(.menu)`.
+  - `@MainActor @Observable final class SpaceIndicatorModel`.
 
 Behaviour to implement:
-- `main.swift`:
-  - If `NSRunningApplication.runningApplications(withBundleIdentifier: "com.mohandong.SpaceIndicator")` contains any app whose `processIdentifier != getpid()`, call `exit(0)`.
-  - Otherwise set `NSApplication.shared.delegate`, call `setActivationPolicy(.accessory)` and `run()`.
-- `applicationDidFinishLaunching`, in this order:
-  - Create the status item.
-  - Set the button font to `NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)`.
-  - Build the menu: "Launch at Login" (action toggles), a separator, and "Quit" with key equivalent `"q"` and action `NSApp.terminate(nil)`. Set `menu.delegate = self`.
-  - Call `refresh()`.
-  - Register the observers: `NSWorkspace.shared.notificationCenter` for `activeSpaceDidChangeNotification` and `NotificationCenter.default` for `NSApplication.didChangeScreenParametersNotification`. Both call `refresh()`.
-  - Call `try LaunchAgentStore.user.repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`. If it throws, log the error.
-- `refresh()` sets `button.title = SpaceNumbering.title(for: CGS.activeSpaceNumber())`.
-- `menuNeedsUpdate` sets the Launch at Login item's `state` to `.on` exactly when `LaunchAgentStore.user.isInstalled()`.
-- The toggle:
-  - If installed, call `uninstall()`.
-  - Otherwise call `install(executablePath: LaunchAgent.executablePath(appPath: LaunchAgent.stableAppPath(resolvedBundlePath: <resolved bundle path>)))`.
-  - Log errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`. Never show UI for them.
+- `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator`, call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
+- Label: `Text(model.title).monospacedDigit()`. Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
+- Model init: `refresh()` (title = `SpaceNumbering.title(for: CGS.activeSpaceNumber())`), observers for `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) and `NSApplication.didChangeScreenParametersNotification` (both call `refresh()`), an observer for `NSMenu.didBeginTrackingNotification` that re-invalidates the Launch at Login state, then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors.
+- Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
+- Pending: whether to also observe `NSWorkspace.didActivateApplicationNotification` is decided after the owner's multi-display check (Step 4).
 
 - [ ] **Step 1: Implement the three files above.**
 - [ ] **Step 2: Build and run tests**
