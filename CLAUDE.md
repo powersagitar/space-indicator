@@ -7,7 +7,7 @@ Personal macOS 27+ (arm64 only) menu bar app showing each display's current Spac
 ## Commands
 
 ```sh
-# Build (same flags the formula uses; formula also passes
+# Build (same flags the formula uses; formula also passes MARKETING_VERSION and
 # "OTHER_SWIFT_FLAGS=$(inherited) -disable-sandbox" for Homebrew's sandbox)
 xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- build
 
@@ -20,6 +20,9 @@ xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derive
 # Cleanup script tests (sandboxed temp HOME; prints PASS)
 sh scripts/test-cleanup.sh
 shellcheck scripts/*   # if installed
+
+# Inspect the built bundle's keys
+plutil -p "build/Build/Products/Release/Space Indicator.app/Contents/Info.plist"
 ```
 
 Output app: `build/Build/Products/Release/Space Indicator.app`.
@@ -31,6 +34,7 @@ Output app: `build/Build/Products/Release/Space Indicator.app`.
   - `LaunchAgent` / `LaunchAgentStore`: Cellar → `opt` path rewrite, plist content, file IO, and self-repair (only rewrites an existing plist when running from the Homebrew Cellar).
   - `SingleInstance`: briefly waits for a quitting instance before deciding to exit.
 - `SpaceIndicator/App/` — wiring: `CGS.swift` (private calls via `@_silgen_name`, screen ordering by `NSScreen` UUIDs), `SpaceIndicatorModel` (`@Observable`; 1 s `.common`-mode timer + `activeSpaceDidChangeNotification`; focus-restore; Launch at Login state re-read from disk), `SpaceIndicatorApp` (`MenuBarExtra` with a plain text title; see the spec's Font note).
+- `SpaceIndicator/Info.plist` — checked-in app plist (`GENERATE_INFOPLIST_FILE = NO` on the app target); all bundle keys live here; the version comes from the `MARKETING_VERSION` build setting.
 - `scripts/space-indicator-cleanup` — POSIX `sh` "zap" installed by the formula as `bin/space-indicator-cleanup`. `SI_SKIP_PROCESSES` and `SI_APPLICATIONS_DIR` env vars exist for the test script.
 
 ## Invariants (anti-goals from the spec)
@@ -43,4 +47,4 @@ Output app: `build/Build/Products/Release/Space Indicator.app`.
 
 ## Releases
 
-Tags are `vX.Y.Z`; the formula is updated by PR to the tap (whose test-bot runner is `xcode-27`). Confirm with the owner before every push.
+Tags are `vX.Y.Z`; before tagging, set `MARKETING_VERSION = X.Y.Z` in both project configs in `project.pbxproj` and commit, then tag that commit, so local Release builds match the tag. The formula is updated by PR to the tap (whose test-bot runner is `xcode-27`). Confirm with the owner before every push.
