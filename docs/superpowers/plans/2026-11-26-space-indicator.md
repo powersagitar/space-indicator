@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A macOS menu bar app showing the active Space's 1-based number, with a Launch at Login / Quit menu, installed from source via `brew install powersagitar/tap/space-indicator`.
+**Goal:** A macOS menu bar app showing each display's current Space 1-based number, with a Launch at Login / Quit menu, installed from source via `brew install powersagitar/tap/space-indicator`.
 
 **Architecture:** One Xcode project. Pure logic (Space numbering, LaunchAgent paths and plist IO) lives in `SpaceIndicator/Core/` and is compiled into both the app target and a host-less unit test target, so tests never launch the app. SwiftUI wiring (`MenuBarExtra`, notifications, private CGS calls) lives in `SpaceIndicator/App/`. A Homebrew formula in the existing tap builds the project with `xcodebuild` and installs a cleanup script.
 
@@ -96,15 +96,15 @@ Project decisions (the pbxproj is hand-written; no Xcode GUI, no XcodeGen):
 **Interfaces:**
 - Produces:
   - `enum SpaceNumbering`
-  - `static func number(activeSpaceID: UInt64, displays: [[String: Any]]) -> Int?` returns the 1-based position of the active Space in its display's `"Spaces"` array.
-  - `static func title(for number: Int?) -> String` returns `"\(n)"` or `"?"`.
+  - `static func numbers(displays: [[String: Any]], screenOrder: [String]) -> [Int?]` returns, per display, the 1-based position of its `"Current Space"` in its own `"Spaces"` array; displays in `screenOrder` (by `"Display Identifier"`) come first, the rest in CGS order.
+  - `static func title(for numbers: [Int?]) -> String` joins with ` · `, nil as `?`, empty as `?`.
+  - Changed after Task 4 (owner request; a spike showed a status item is mirrored across displays, so one label lists every display's number). Replaces `number(activeSpaceID:displays:)`.
 
 Rules:
 - An ID is read from key `ManagedSpaceID` as `NSNumber` → `uint64Value`, accepting any integer NSNumber.
-- `activeSpaceID == 0` → `nil`.
+- Current ID missing, unreadable or 0 → that display is `nil`.
 - A display dict without an `[[String: Any]]` `"Spaces"` is skipped.
-- A display whose `Spaces` contains the active ID but also contains any entry with an unreadable ID → `nil`.
-- Not found anywhere → `nil`.
+- A display whose `Spaces` has any entry with an unreadable ID, or lacks the current ID → `nil`.
 - `type` is ignored, because every Space counts.
 
 Fixture helper in the test file: `func space(_ id: Any, type: Int = 0) -> [String: Any]` and `func display(_ spaces: [[String: Any]]) -> [String: Any]` (adds `"Display Identifier": "Main"`).
@@ -182,18 +182,18 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 - Delete: `SpaceIndicator/App/main.swift`
 
 **Interfaces:**
-- Consumes: `SpaceNumbering.number(activeSpaceID:displays:)`, `SpaceNumbering.title(for:)`, `LaunchAgent.stableAppPath/executablePath`, `LaunchAgentStore.user` and its methods.
+- Consumes: `SpaceNumbering.numbers(displays:screenOrder:)`, `SpaceNumbering.title(for:)`, `LaunchAgent.stableAppPath/executablePath`, `LaunchAgentStore.user` and its methods.
 - Produces:
-  - `enum CGS` with `static func activeSpaceNumber() -> Int?` (private `@_silgen_name` declarations of `CGSMainConnectionID`, `CGSGetActiveSpace`, `CGSCopyManagedDisplaySpaces` at file scope; casts the result to `[[String: Any]]`, nil if the cast fails).
+  - `enum CGS` with `@MainActor static func spaceNumbers() -> [Int?]` (private `@_silgen_name` declarations of `CGSMainConnectionID`, `CGSCopyManagedDisplaySpaces` at file scope; casts to `[[String: Any]]`, empty if the cast fails; screen order from `NSScreen.screens` sorted by `minX` then `minY`, mapped to display UUID strings).
   - `@main struct SpaceIndicatorApp: App` with a `MenuBarExtra` scene, `.menuBarExtraStyle(.menu)`.
   - `@MainActor @Observable final class SpaceIndicatorModel`.
 
 Behaviour to implement:
 - `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator`, call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
 - Label: `Image(nsImage: TitleImage.make(model.title))` with `.accessibilityLabel(model.title)` (MenuBarExtra ignores font modifiers; `TitleImage` in Core draws the tabular-digit font into a template image). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
-- Model init: `refresh()` (title = `SpaceNumbering.title(for: CGS.activeSpaceNumber())`), observers for `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) and `NSApplication.didChangeScreenParametersNotification` (both call `refresh()`), an observer for `NSMenu.didBeginTrackingNotification` that re-invalidates the Launch at Login state, then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors.
+- Model init: `refresh()` (title = `SpaceNumbering.title(for: CGS.spaceNumbers())`), observers for `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) and `NSApplication.didChangeScreenParametersNotification` (both call `refresh()`), an observer for `NSMenu.didBeginTrackingNotification` that re-invalidates the Launch at Login state, then `repairIfNeeded(resolvedBundlePath: Bundle.main.bundleURL.resolvingSymlinksInPath().path)`, logging errors.
 - Launch at Login binding: getter returns `LaunchAgentStore.user.isInstalled()`; setter installs or uninstalls, logging errors with `Logger(subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")`, never showing UI.
-- The owner's multi-display check passed with `activeSpaceDidChangeNotification` alone, so no `didActivateApplicationNotification` observer is needed for the number. The model does observe `NSWorkspace.didActivateApplicationNotification` only to restore focus to the previous app when this app is activated.
+- Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus, so no `didActivateApplicationNotification` observer is needed for the number. The model does observe `NSWorkspace.didActivateApplicationNotification` only to restore focus to the previous app when this app is activated.
 
 - [ ] **Step 1: Implement the three files above.**
 - [ ] **Step 2: Build and run tests**

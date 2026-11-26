@@ -5,7 +5,7 @@ import OSLog
 @MainActor
 @Observable
 final class SpaceIndicatorModel {
-    private(set) var title = SpaceNumbering.title(for: nil)
+    private(set) var title = SpaceNumbering.title(for: [])
     /// Bumped after every toggle and when a menu starts tracking, to invalidate views reading `launchAtLogin`.
     private var loginRevision = 0
 
@@ -67,7 +67,7 @@ final class SpaceIndicatorModel {
     }
 
     func refresh() {
-        title = SpaceNumbering.title(for: CGS.activeSpaceNumber())
+        title = SpaceNumbering.title(for: CGS.spaceNumbers())
     }
 
     /// Reads the LaunchAgent file on each evaluation; `loginRevision` is what triggers re-evaluation.

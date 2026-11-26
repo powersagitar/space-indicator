@@ -8,7 +8,7 @@ A personal macOS menu bar app that shows the 1-based number of the active Space,
 
 ## Goals
 
-- Menu bar shows only the active Space number, e.g. `3`, in the system font (SF Pro). `?` when the active Space can't be determined.
+- Menu bar shows every display's current Space number in one label, ordered left to right and joined by ` · `, e.g. `2 · 1` (a single display shows just `3`), in the system font (SF Pro). A display whose Space can't be determined shows `?`.
 - Numbering matches the left-to-right order in Mission Control on that display, starting at 1, counting full-screen Spaces by position.
 - Launch at Login that survives `brew upgrade`.
 - Asks for no permissions.
@@ -51,21 +51,20 @@ A personal macOS menu bar app that shows the 1-based number of the active Space,
 - App also calls `NSApp.setActivationPolicy(.accessory)` at startup.
 - Release build: `ARCHS = arm64`, `ONLY_ACTIVE_ARCH = NO`.
 
-### Reading the active Space (private CGS)
+### Reading each display's Space (private CGS)
 
 Declared with `@_silgen_name` (no bridging header):
 
 - `CGSMainConnectionID() -> Int32`
 - `CGSCopyManagedDisplaySpaces(_ cid: Int32) -> CFArray` — per-display array of dictionaries; each has `"Display Identifier"`, `"Current Space"` (dict with `ManagedSpaceID`), and `"Spaces"` (array in Mission Control order, each with `ManagedSpaceID` and `type`: 0 = desktop, 4 = full-screen).
-- `CGSGetActiveSpace(_ cid: Int32) -> UInt64` — the Space with keyboard focus.
 
-Algorithm: find the display whose `"Spaces"` contains the active Space ID; the number is that Space's 1-based index in that array. Every Space type counts (desktop 1, desktop 2, full-screen Safari → 3, next desktop → 4). If the active ID is 0, isn't found, or the data is malformed → `?`.
+Algorithm: for each display dict with a `"Spaces"` array, the number is the 1-based index of its `"Current Space"` `ManagedSpaceID` within its own `"Spaces"`. Every Space type counts (desktop 1, desktop 2, full-screen Safari → 3, next desktop → 4). A display's number is `?` if the current ID is missing, 0, not in `Spaces`, or any `Spaces` entry has an unreadable ID. Displays are ordered by screen position (`NSScreen.screens` sorted by `frame.minX`, then `minY`, mapped to display UUID strings, which match CGS's `"Display Identifier"`); unmatched ones follow in CGS order.
 
 This works the same with "Displays have separate Spaces" on (each display's array numbers from 1) or off (a single array spanning displays).
 
-With multiple displays, the menu bar item appears in every display's menu bar with the same text; it shows the number for the Space that has focus.
+With multiple displays, the menu bar item appears in every display's menu bar with the same text. Owner request (each display's Space visible), plus a spike showing a status item is drawn once and mirrored onto every display, so per-display content is impossible; the one label lists every display's number instead. With "Displays have separate Spaces" off there is one `Main` entry, so one number.
 
-The parsing/numbering is a pure function over the CGS array (`[[String: Any]]` + active ID → `Int?`) so it can be unit-tested with fixture data.
+The parsing/numbering is a pure function over the CGS array (`numbers(displays:screenOrder:) -> [Int?]`, `title(for: [Int?])`) so it can be unit-tested with fixture data.
 
 ### Single instance
 
@@ -75,7 +74,7 @@ At launch, if another running application has bundle ID `com.mohandong.SpaceIndi
 
 Recompute at launch, on `NSWorkspace.shared.notificationCenter` `activeSpaceDidChangeNotification`, and on `NSApplication.didChangeScreenParametersNotification`.
 
-Verified by the owner on a multi-display setup: moving focus between displays updates the number with `activeSpaceDidChangeNotification` alone, so no `didActivateApplicationNotification` observer is needed.
+Correction: moving focus between displays changes `CGSGetActiveSpace` without firing `activeSpaceDidChangeNotification`, so the earlier "multi-display check passed" note was wrong. The label no longer depends on focus (it shows every display), so the two triggers above are sufficient and no `didActivateApplicationNotification` observer is needed for the number.
 
 ### Menu bar item
 
@@ -150,7 +149,7 @@ It doesn't run `brew uninstall` itself; the caveats say to run it first, then `b
 
 ### Testing
 
-- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, separate-spaces multi-display, full-screen in the middle, active ID missing → nil, malformed input → nil); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
+- Unit tests (Swift Testing, in `SpaceIndicatorTests`): numbering over fixture CGS arrays (single display, `Main` single array, separate-spaces multi-display, screen ordering with unknown IDs last, full-screen in the middle, current ID missing → `?`, malformed input → skipped or `?`, title joining); Cellar → opt path rewrite (Cellar path, non-Cellar path, `/usr/local` prefix); plist content (KeepAlive false, path correct); self-repair decision.
 - Manual check on the real machine: switching Spaces, full-screen app, plug/unplug a display, toggle Launch at Login and log out/in, Quit doesn't relaunch, launching a second copy exits.
 
 ### Release and install (in scope)
