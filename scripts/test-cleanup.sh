@@ -48,7 +48,21 @@ rmdir "$SI_APPLICATIONS_DIR/Space Indicator.app"
 
 # (d) foreign symlink is kept
 ln -s "/somewhere/else/Space Indicator.app" "$SI_APPLICATIONS_DIR/Space Indicator.app"
-sh "$script" >/dev/null
+out=$(sh "$script")
 [ -L "$SI_APPLICATIONS_DIR/Space Indicator.app" ] || fail "(d) foreign symlink removed"
+case "$out" in *skipped*) ;; *) fail "(d) no skipped message" ;; esac
+rm "$SI_APPLICATIONS_DIR/Space Indicator.app"
+
+# (e) lookalike symlink is kept
+ln -s "/elsewhere/space-indicator/Space Indicator.app" "$SI_APPLICATIONS_DIR/Space Indicator.app"
+out=$(sh "$script")
+[ -L "$SI_APPLICATIONS_DIR/Space Indicator.app" ] || fail "(e) lookalike symlink removed"
+case "$out" in *skipped*) ;; *) fail "(e) no skipped message" ;; esac
+rm "$SI_APPLICATIONS_DIR/Space Indicator.app"
+
+# (f) Cellar-style symlink is removed
+ln -s "/opt/homebrew/Cellar/space-indicator/0.1.0/Space Indicator.app" "$SI_APPLICATIONS_DIR/Space Indicator.app"
+sh "$script" >/dev/null
+[ ! -L "$SI_APPLICATIONS_DIR/Space Indicator.app" ] || fail "(f) Cellar symlink remains"
 
 echo PASS

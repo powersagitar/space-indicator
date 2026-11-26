@@ -30,7 +30,8 @@ remove "$HOME/Library/LaunchAgents/$ID.plist"
 app="$APPS/Space Indicator.app"
 if [ -L "$app" ]; then
   case "$(readlink "$app")" in
-    */space-indicator/"Space Indicator.app") remove "$app" ;;
+    */opt/space-indicator/"Space Indicator.app" | */Cellar/space-indicator/*/"Space Indicator.app")
+      remove "$app" ;;
     *) echo "skipped (not a Homebrew symlink): $app" ;;
   esac
 elif [ -e "$app" ]; then

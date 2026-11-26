@@ -237,7 +237,7 @@ Behaviour (spec §Cleanup), in order:
    - If `pgrep -x "Space Indicator"` finds it, run `osascript -e 'quit app id "com.mohandong.SpaceIndicator"'`. If it's still running after 2 seconds, run `pkill -x "Space Indicator"`.
    - Run `launchctl bootout "gui/$(id -u)/com.mohandong.SpaceIndicator" 2>/dev/null || true`.
 2. Remove `$HOME/Library/LaunchAgents/com.mohandong.SpaceIndicator.plist`.
-3. Remove `$SI_APPLICATIONS_DIR/Space Indicator.app` only if it's a symlink (`[ -L ]`) whose `readlink` ends in `/space-indicator/Space Indicator.app`. Otherwise print `skipped (not a Homebrew symlink): <path>`.
+3. Remove `$SI_APPLICATIONS_DIR/Space Indicator.app` only if it's a symlink (`[ -L ]`) whose `readlink` matches `*/opt/space-indicator/Space Indicator.app` or `*/Cellar/space-indicator/*/Space Indicator.app` (i.e. points into the Homebrew prefix). Otherwise print `skipped (not a Homebrew symlink): <path>`.
 4. Remove `$HOME/Library/Preferences/com.mohandong.SpaceIndicator.plist`, `$HOME/Library/Caches/com.mohandong.SpaceIndicator`, `$HOME/Library/HTTPStorages/com.mohandong.SpaceIndicator` and `"$HOME/Library/Saved Application State/com.mohandong.SpaceIndicator.savedState"`.
 5. For each path actually removed, print `removed: <path>`. If nothing was removed, print `nothing to clean up`.
 
@@ -245,7 +245,9 @@ Behaviour (spec §Cleanup), in order:
   - **(a)** Seed all 4 Library items, the plist, and a symlink `Space Indicator.app` → `/opt/homebrew/opt/space-indicator/Space Indicator.app` (a dangling link is fine). After the run all 6 are gone, and the output has 6 `removed:` lines.
   - **(b)** Run again: the output is `nothing to clean up` and the exit status is 0.
   - **(c)** A real directory `Space Indicator.app` in the apps dir still exists after the run, and the output contains `skipped`.
-  - **(d)** A symlink to `/somewhere/else/Space Indicator.app` still exists after the run.
+  - **(d)** A symlink to `/somewhere/else/Space Indicator.app` still exists after the run, and the output contains `skipped`.
+  - **(e)** A lookalike symlink to `/elsewhere/space-indicator/Space Indicator.app` still exists after the run, and the output contains `skipped`.
+  - **(f)** A dangling Cellar-style symlink to `/opt/homebrew/Cellar/space-indicator/0.1.0/Space Indicator.app` is removed.
 - [ ] **Step 2: Run, expect failure** — `sh scripts/test-cleanup.sh` fails because the script is missing.
 - [ ] **Step 3: Implement `scripts/space-indicator-cleanup`** (`#!/bin/sh`, `set -eu`, every path quoted).
 - [ ] **Step 4: Run, expect pass** — `sh scripts/test-cleanup.sh` prints `PASS`. If `shellcheck` is installed, `shellcheck scripts/*` should be clean.
