@@ -29,8 +29,8 @@ Output app: `build/Build/Products/Release/Space Indicator.app`.
 - `SpaceIndicator/Core/` — pure, testable logic. These files are compiled into **both** the app target and the host-less `SpaceIndicatorTests` target (tests never launch the app), so Core must not depend on anything in `App/`.
   - `SpaceNumbering`: pure function over the `CGSCopyManagedDisplaySpaces` array → per-display `[Int?]` and the joined title (`2 · 1`, `?` when untrustworthy).
   - `LaunchAgent` / `LaunchAgentStore`: Cellar → `opt` path rewrite, plist content, file IO, and self-repair (only rewrites an existing plist when running from the Homebrew Cellar).
-  - `SingleInstance`.
-- `SpaceIndicator/App/` — wiring: `CGS.swift` (private calls via `@_silgen_name`, screen ordering by `NSScreen` UUIDs), `SpaceIndicatorModel` (`@Observable`; 1 s `.common`-mode timer + `activeSpaceDidChangeNotification`; focus-restore; Launch at Login state re-read from disk), `SpaceIndicatorApp` (`MenuBarExtra` with a plain `Text` label: it ignores font and frame modifiers, so the system styles it and its width follows the digits).
+  - `SingleInstance`: briefly waits for a quitting instance before deciding to exit.
+- `SpaceIndicator/App/` — wiring: `CGS.swift` (private calls via `@_silgen_name`, screen ordering by `NSScreen` UUIDs), `SpaceIndicatorModel` (`@Observable`; 1 s `.common`-mode timer + `activeSpaceDidChangeNotification`; focus-restore; Launch at Login state re-read from disk), `SpaceIndicatorApp` (`MenuBarExtra` with a plain text title; see the spec's Font note).
 - `scripts/space-indicator-cleanup` — POSIX `sh` "zap" installed by the formula as `bin/space-indicator-cleanup`. `SI_SKIP_PROCESSES` and `SI_APPLICATIONS_DIR` env vars exist for the test script.
 
 ## Invariants (anti-goals from the spec)

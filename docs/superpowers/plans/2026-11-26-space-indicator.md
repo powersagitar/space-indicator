@@ -47,10 +47,8 @@ SpaceIndicator/Core/AppIdentity.swift     # the bundle ID constant (simplify pas
 SpaceIndicator/Core/SpaceNumbering.swift  # pure numbering + title
 SpaceIndicator/Core/LaunchAgent.swift     # pure path/plist + LaunchAgentStore file IO
 SpaceIndicator/Core/SingleInstance.swift  # wait briefly for a quitting instance (final fix wave)
-SpaceIndicator/Core/TitleImage.swift      # title string → tabular-digit template NSImage
 SpaceIndicatorTests/SpaceNumberingTests.swift
 SpaceIndicatorTests/LaunchAgentTests.swift
-SpaceIndicatorTests/TitleImageTests.swift
 SpaceIndicatorTests/SingleInstanceTests.swift
 scripts/space-indicator-cleanup        # POSIX sh, installed to bin/
 scripts/test-cleanup.sh                # sandboxed test of the cleanup script
@@ -180,7 +178,7 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 - [ ] **Step 3: Implement `LaunchAgent` and `LaunchAgentStore`** per the interface above. The rewrite is one `replacingOccurrences(options: .regularExpression)` call; it runs only at launch and on a toggle, so no compiled regex is cached.
 - [ ] **Step 4: Run all tests, expect pass**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
-  Expected: `** TEST SUCCEEDED **`, 21 tests at this point (11 numbering + 10 LaunchAgent). Final suite: 30 tests in 4 suites (14 SpaceNumbering + 10 LaunchAgent + 3 TitleImage + 3 SingleInstance).
+  Expected: `** TEST SUCCEEDED **`, 21 tests at this point (11 numbering + 10 LaunchAgent). Final suite: 27 tests in 3 suites (14 SpaceNumbering + 10 LaunchAgent + 3 SingleInstance).
 - [ ] **Step 5: Commit** — `git add -A && git commit -m "Add LaunchAgent path logic and store"`
 
 ---
@@ -188,8 +186,8 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 ### Task 4: App wiring (CGS, menu bar extra, triggers, single instance)
 
 **Files:**
-- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`, `SpaceIndicator/Core/TitleImage.swift`, and (final fix wave) `SpaceIndicator/Core/SingleInstance.swift`
-- Test: `SpaceIndicatorTests/TitleImageTests.swift` (3 tests: `"1"` and `"8"` give equal widths; `"?"` gives a template image; the image's `accessibilityDescription` is the title) and (final fix wave) `SpaceIndicatorTests/SingleInstanceTests.swift` (3 tests: no other instance means no wait; an instance that exits during the wait is ignored; one still running after at most 1 s of waits means exit)
+- Create: `SpaceIndicator/App/CGS.swift`, `SpaceIndicator/App/SpaceIndicatorApp.swift`, `SpaceIndicator/App/SpaceIndicatorModel.swift`, and (final fix wave) `SpaceIndicator/Core/SingleInstance.swift`
+- Test: (final fix wave) `SpaceIndicatorTests/SingleInstanceTests.swift` (3 tests: no other instance means no wait; an instance that exits during the wait is ignored; one still running after at most 1 s of waits means exit)
 - Delete: `SpaceIndicator/App/main.swift`
 
 **Interfaces:**
@@ -201,7 +199,7 @@ Tests use a fresh temp directory per test: `FileManager.default.temporaryDirecto
 
 Behaviour to implement:
 - `SpaceIndicatorApp.init`: if another process has bundle ID `com.mohandong.SpaceIndicator` (ignoring `isTerminated` ones, after waiting up to 1 s via `SingleInstance.anotherInstanceRemains` for it to exit — final fix wave), call `exit(0)`; then `NSApplication.shared.setActivationPolicy(.accessory)` and create the model.
-- Label: `Image(nsImage: TitleImage.make(model.title))` with `.accessibilityLabel(model.title)`; `TitleImage` also sets the image's `accessibilityDescription` to the title (MenuBarExtra ignores font modifiers; `TitleImage` in Core draws the tabular-digit font into a template image). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
+- Label: `MenuBarExtra(model.title)`, a plain text title the system styles like its own menu bar text (supersedes the earlier tabular-digit template image; see the spec's Font note). Content: `Toggle("Launch at Login")`, `Divider()`, `Button("Quit")` with `.keyboardShortcut("q")` calling `NSApp.terminate(nil)`.
 - `refresh()` computes `SpaceNumbering.title(for: CGS.spaceNumbers())` and assigns it to `title` only when it differs from the current value.
 - Model init, as built: `refresh()`, then observers on queue `.main` with `MainActor.assumeIsolated`:
   - `NSWorkspace.activeSpaceDidChangeNotification` (workspace center) → `refresh()`.
@@ -213,7 +211,7 @@ Behaviour to implement:
 - Correction: focus changes between displays do not fire `activeSpaceDidChangeNotification`, but the label no longer depends on focus. The model observes `NSWorkspace.didActivateApplicationNotification` to restore focus to the previous app when this app is activated.
 - Why the timer (final fix wave, supersedes "no polling timer"): a diagnostic showed macOS posts no notification for Mission Control reordering or full-screen Space removal; the `Spaces` array just changes. The poll is the catch-all. It also covers display plug/unplug and app quits with up to about 1.5 s latency, so the earlier screen-parameters and app-termination observers were removed, and the activation and menu-tracking observers no longer refresh. `activeSpaceDidChangeNotification` stays only for instant feedback on a Space switch. The timer's closure is `[weak self]` + `MainActor.assumeIsolated { self?.refresh() }`. Assigning only on change keeps @Observable from re-rendering the label every second.
 
-- [ ] **Step 1: Write the `TitleImageTests`, then implement the files above.**
+- [ ] **Step 1: Write the `SingleInstanceTests`, then implement the files above.**
 - [ ] **Step 2: Build and run tests**
   Run: `xcodebuild test -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -derivedDataPath build`
   Expected: `** TEST SUCCEEDED **`, 23 tests at this point (30 in 4 suites after the final fix wave), with no warnings in App/ or Core/ files about Sendable or MainActor isolation.

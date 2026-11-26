@@ -19,17 +19,14 @@ struct SpaceIndicatorApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
+        // Plain text title: MenuBarExtra ignores font/frame modifiers, so the system styles it (see spec).
+        MenuBarExtra(model.title) {
             Toggle("Launch at Login", isOn: Binding(
                 get: { model.launchAtLogin },
                 set: { model.setLaunchAtLogin($0) }))
             Divider()
             Button("Quit") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
-        } label: {
-            // Plain text so the system styles it like its own menu bar text (weight, size, position).
-            // MenuBarExtra ignores font and frame modifiers, so the width follows the digits.
-            Text(model.title)
         }
         .menuBarExtraStyle(.menu)
     }
