@@ -11,6 +11,8 @@ final class SpaceIndicatorModel {
 
     @ObservationIgnored private var previousApp: NSRunningApplication?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    /// Lives as long as the model, i.e. the app.
+    @ObservationIgnored private var pollTimer: Timer?
     @ObservationIgnored private let logger = Logger(
         subsystem: "com.mohandong.SpaceIndicator", category: "LaunchAgent")
 
@@ -43,14 +45,23 @@ final class SpaceIndicatorModel {
                 }
             })
         // A Space's position can change without a Space switch (reordering in Mission Control,
-        // or an app quitting removes its full-screen Space), so also refresh on app activation,
-        // app termination and menu open. No polling.
+        // or an app quitting removes its full-screen Space). These triggers give an instant
+        // response where they fire; the poll below covers the cases with no notification.
         observers.append(
             NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refresh() }
             })
+        // macOS posts no notification when Mission Control reorders Spaces or a full-screen
+        // Space disappears, so poll one WindowServer query every second. `.common` mode keeps
+        // it firing while the menu is open; refresh() only assigns when the title changes.
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
         // A menu bar app has no windows to focus, but `open` on a running copy activates it
         // and steals focus. Remember the last other frontmost app and give focus back.
         previousApp = NSWorkspace.shared.frontmostApplication
@@ -83,8 +94,11 @@ final class SpaceIndicatorModel {
         }
     }
 
+    /// Assigns only on change: @Observable notifies on every set, and the 1 s poll would
+    /// otherwise re-render the label every second.
     func refresh() {
-        title = SpaceNumbering.title(for: CGS.spaceNumbers())
+        let new = SpaceNumbering.title(for: CGS.spaceNumbers())
+        if new != title { title = new }
     }
 
     /// Reads the LaunchAgent file on each evaluation; `loginRevision` is what triggers re-evaluation.
