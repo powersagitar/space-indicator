@@ -18,7 +18,7 @@
 - Ad-hoc signing: `CODE_SIGN_IDENTITY = "-"`, `CODE_SIGN_STYLE = Manual`, no `DEVELOPMENT_TEAM`. App Sandbox off. Hardened runtime off.
 - SwiftUI `MenuBarExtra` UI (owner's decision, replaces AppKit-only): no storyboard, no xib, no windows.
 - LaunchAgent label and filename: `com.mohandong.SpaceIndicator` / `~/Library/LaunchAgents/com.mohandong.SpaceIndicator.plist`; `RunAtLoad` true, `KeepAlive` false, `ProcessType` `Interactive`.
-- Formula `space-indicator` (class `SpaceIndicator`), `license "GPL-3.0-only"`, no bottle, tags `vX.Y.Z`, first `v0.1.0`.
+- Formula `space-indicator` (class `SpaceIndicator`), `license "GPL-3.0-only"`, no `bottle do` block in the PR (the owner's `brew pr-pull` adds it), tags `vX.Y.Z`, first `v0.1.0`.
 - Every path containing `Space Indicator` is quoted in shell and Ruby.
 - No `launchctl` calls from the app. The app asks for no permissions.
 - Every `git push` (this repo, tag, tap) needs the owner's confirmation at that moment.
@@ -287,7 +287,7 @@ Formula decisions:
     - `Utils.safe_popen_read("xcode-select", "-p")` containing `CommandLineTools` → the `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` fix
     - `quiet_system("xcodebuild", "-license", "check")` false → `sudo xcodebuild -license accept`
     - `quiet_system("xcodebuild", "-checkFirstLaunchStatus")` false → `sudo xcodebuild -runFirstLaunch`
-  - Then `system "xcodebuild", "-project", "SpaceIndicator.xcodeproj", "-scheme", "SpaceIndicator", "-configuration", "Release", "-derivedDataPath", "build", "CODE_SIGN_IDENTITY=-", "MARKETING_VERSION=#{version}", "build"`.
+  - Then `xcodebuild "-project", "SpaceIndicator.xcodeproj", "-scheme", "SpaceIndicator", "-configuration", "Release", "-derivedDataPath", "build", "CODE_SIGN_IDENTITY=-", "MARKETING_VERSION=#{version}", "OTHER_SWIFT_FLAGS=$(inherited) -disable-sandbox", "build"`, via Homebrew's `xcodebuild` helper instead of `system`. The flag is needed because Swift macro plugins run their own `sandbox-exec`, which can't nest inside Homebrew's sandbox.
   - Then `prefix.install "build/Build/Products/Release/Space Indicator.app"` and `bin.install "scripts/space-indicator-cleanup"`.
 - **`caveats`:** the Setup and Common pitfalls lists from the spec, word for word in substance, using `#{opt_prefix}` in the `ln -sfn` command. This includes that turning on Launch at Login shows macOS's "Background Items Added" notice, which is expected.
 - **`test`:**
@@ -320,7 +320,5 @@ Formula decisions:
 - [ ] **Step 8: Check cleanup, then reinstall**
   - Run: `space-indicator-cleanup`. Expected: `removed:` lines for the plist and the `/Applications` symlink, and the app quits.
   - Then run `brew uninstall space-indicator && brew install --build-from-source powersagitar/tap/space-indicator`, recreate the symlink, and relaunch.
-- [ ] **Step 9: Commit and push the tap (confirm with the owner first).**
-  - Commit in the tap: `git -C /opt/homebrew/Library/Taps/powersagitar/homebrew-tap add Formula/space-indicator.rb && git -C … commit -m "space-indicator 0.1.0 (new formula)"`.
-  - Ask the owner. Then `git -C … push origin main`.
-  - Expected: the tap's test-bot workflow passes on that push. Check with `gh run list -R powersagitar/homebrew-tap -L 1`.
+- [ ] **Step 9: Open the tap PR (the owner pushes).**
+  - The formula is committed on tap branch `space-indicator`, together with the CI runner change (`os: [ xcode-27 ]` in `.github/workflows/tests.yml`). PR #10 carries both; its CI passed.

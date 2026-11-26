@@ -91,7 +91,7 @@ Correction (history): an earlier design numbered only the focused display's Spac
 
 ### Launch at Login (user LaunchAgent)
 
-Not `SMAppService`, because the Cellar path changes every version.
+Not `SMAppService`, because the Cellar path changes every version. A spike tested `SMAppService.agent` with a bundled plist: Background Task Management (BTM) records the Cellar path, so after an upgrade the job fails with "No such file", status still reports `.enabled`, and re-registering fails with a code-signing launch-constraint violation (ad-hoc signatures change every build). So the hand-written plist pointing at `opt` stays.
 
 Plist path: `~/Library/LaunchAgents/com.mohandong.SpaceIndicator.plist`. Contents:
 
@@ -119,9 +119,9 @@ Failure to write/delete: show nothing (no windows); log via `os.Logger`; the che
 
 In the existing tap `powersagitar/homebrew-tap`, file `Formula/space-indicator.rb` (class `SpaceIndicator`), styled like the existing `how-to.rb` (desc, homepage, url, sha256, `license "GPL-3.0-only"`).
 
-- Source: GitHub tag tarball of `github.com/powersagitar/space-indicator` (already the repo's `origin`). Tags are `vX.Y.Z`, first release `v0.1.0`. No bottle — builds from source. *(Tag format is the designer's call.)*
+- Source: GitHub tag tarball of `github.com/powersagitar/space-indicator` (already the repo's `origin`). Tags are `vX.Y.Z`, first release `v0.1.0`. The formula is delivered by pull request to the tap, and the owner's `brew pr-pull` workflow adds the `bottle do` block. The tap's test-bot macOS runner is `xcode-27` (GitHub's macOS 27 image; there is no `macos-27` label); PR #10's CI passed and produced a `bottles_xcode-27` artifact. `brew install --build-from-source` still works. *(Tag format is the designer's call.)*
 - `depends_on xcode: ["27.0", :build]`, `depends_on arch: :arm64`, and a macOS 27 minimum (use Homebrew's symbol for macOS 27 if it exists, else check `MacOS.version` in `install` and `odie`).
-- `install`: `xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- MARKETING_VERSION=#{version} build`, then `prefix.install "build/Build/Products/Release/Space Indicator.app"`.
+- `install`: `xcodebuild -project SpaceIndicator.xcodeproj -scheme SpaceIndicator -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- MARKETING_VERSION=#{version} "OTHER_SWIFT_FLAGS=$(inherited) -disable-sandbox" build` (via Homebrew's `xcodebuild` helper, not `system`). The sandbox flag is needed because Swift macro plugins (`@State`, `@Observable`) run their own `sandbox-exec`, which can't nest inside Homebrew's build sandbox. Then `prefix.install "build/Build/Products/Release/Space Indicator.app"`.
 - **Early checks in `install`** (before `xcodebuild`): `odie` with the exact fix command if the active developer directory isn't a full Xcode (`xcode-select -p` ends in `CommandLineTools`), if the license isn't accepted (`xcodebuild -license check`), or if first-launch components are missing (`xcodebuild -checkFirstLaunchStatus`). Caveats print only after a successful install (and in `brew info`), so these checks are what a fresh machine actually hits. *(Designer's call, added alongside the caveats requested.)*
 - `caveats` — two parts:
   - **Setup:** the one-time symlink command `ln -sfn "#{opt_prefix}/Space Indicator.app" "/Applications/Space Indicator.app"`, how to start it (`open "/Applications/Space Indicator.app"`, or Spotlight once linked), and that Launch at Login is in its menu.
@@ -161,7 +161,7 @@ It doesn't run `brew uninstall` itself; the caveats say to run it first, then `b
 The plan ends with a working `brew install powersagitar/tap/space-indicator`:
 
 1. Push this repo to `origin` and tag `v0.1.0`.
-2. Write `Formula/space-indicator.rb` in the tap with the real tag-tarball URL and `sha256`, then commit and push it to the tap's remote.
+2. Write `Formula/space-indicator.rb` in the tap with the real tag-tarball URL and `sha256`, then open a pull request on the tap from branch `space-indicator` (the CI runner change to `xcode-27` is part of the same PR).
 3. `brew install powersagitar/tap/space-indicator`, `brew test`, create the `/Applications` symlink, and launch it from there.
 4. Check `space-indicator-cleanup` removes everything listed, then reinstall.
 
