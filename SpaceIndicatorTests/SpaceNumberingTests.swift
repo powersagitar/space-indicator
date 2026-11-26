@@ -66,8 +66,31 @@ private func display(_ spaces: [[String: Any]], current: Any? = nil, id: String 
         #expect(numbers([display(spaces, current: NSNumber(value: 11.0))]) == [nil])
     }
 
-    @Test func skipsMalformedOtherDisplay() {
-        let d: [[String: Any]] = [["Display Identifier": "X"], display([space(10), space(11)], current: 11)]
+    @Test func boolIDsAreUnreadable() {
+        let spaces = [space(10), space(NSNumber(value: true)), space(12)]
+        #expect(numbers([display(spaces, current: 12)]) == [nil])
+        #expect(numbers([display([space(1), space(2)], current: NSNumber(value: true))]) == [nil])
+    }
+
+    @Test func floatEntryInSpacesMakesThatDisplayNil() {
+        let d = [
+            display([space(10), space(NSNumber(value: 11.0)), space(12)], current: 12, id: "A"),
+            display([space(20), space(21)], current: 21, id: "B"),
+        ]
+        #expect(numbers(d) == [nil, 2])
+    }
+
+    @Test func identifiedDisplayWithoutSpacesIsNil() {
+        let d: [[String: Any]] = [
+            ["Display Identifier": "X"],
+            ["Display Identifier": "Y", "Spaces": "bad"],
+            display([space(10), space(11)], current: 11),
+        ]
+        #expect(numbers(d) == [nil, nil, 2])
+    }
+
+    @Test func skipsDisplayWithNeitherIdentifierNorSpaces() {
+        let d: [[String: Any]] = [["Current Space": ["ManagedSpaceID": 1]], display([space(10), space(11)], current: 11)]
         #expect(numbers(d) == [2])
     }
 

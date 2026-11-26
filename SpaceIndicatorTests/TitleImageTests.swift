@@ -13,4 +13,8 @@ import Testing
         #expect(image.size.width > 0)
         #expect(image.isTemplate)
     }
+
+    @Test func accessibilityDescriptionIsTitle() {
+        #expect(TitleImage.make("2 \u{B7} 1").accessibilityDescription == "2 \u{B7} 1")
+    }
 }

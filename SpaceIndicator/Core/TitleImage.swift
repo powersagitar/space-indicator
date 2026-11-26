@@ -13,6 +13,8 @@ enum TitleImage {
             return true
         }
         image.isTemplate = true
+        // VoiceOver reads this from the status button even if the SwiftUI label's isn't passed on.
+        image.accessibilityDescription = title
         return image
     }
 }

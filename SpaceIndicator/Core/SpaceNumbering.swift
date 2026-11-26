@@ -4,11 +4,16 @@ enum SpaceNumbering {
     /// One entry per display: the 1-based position of its "Current Space" within its own
     /// "Spaces" array, or nil when that can't be trusted. Displays listed in `screenOrder`
     /// (by "Display Identifier") come first, in that order; the rest keep CGS order.
+    /// A display with an identifier but no readable "Spaces" is nil; a dict with neither is skipped.
     static func numbers(displays: [[String: Any]], screenOrder: [String]) -> [Int?] {
         var entries: [(id: String?, number: Int?)] = []
         for display in displays {
-            guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
-            entries.append((display["Display Identifier"] as? String, number(of: display, in: spaces)))
+            let id = display["Display Identifier"] as? String
+            if let spaces = display["Spaces"] as? [[String: Any]] {
+                entries.append((id, number(of: display, in: spaces)))
+            } else if id != nil {
+                entries.append((id, nil))
+            }
         }
         let rank = { (id: String?) -> Int in
             id.flatMap { screenOrder.firstIndex(of: $0) } ?? screenOrder.count
@@ -37,7 +42,9 @@ enum SpaceNumbering {
     }
 
     private static func spaceID(_ space: [String: Any]) -> UInt64? {
+        // A Bool bridges to NSNumber (CFBoolean) too, and a float isn't an ID.
         guard let n = space["ManagedSpaceID"] as? NSNumber,
+              CFGetTypeID(n) != CFBooleanGetTypeID(),
               !CFNumberIsFloatType(n) else { return nil }
         return n.uint64Value
     }

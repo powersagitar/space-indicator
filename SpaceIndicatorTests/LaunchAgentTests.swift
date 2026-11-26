@@ -90,7 +90,7 @@ private func withStore(_ body: (LaunchAgentStore) throws -> Void) throws {
             #expect(store.isInstalled())
             let r = try store.repairIfNeeded(resolvedBundlePath: cellar)
             #expect(r)
-            #expect(store.installedExecutablePath() != nil)
+            #expect(store.installedExecutablePath() == opt + "/Contents/MacOS/Space Indicator")
         }
     }
 
